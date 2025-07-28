@@ -9,21 +9,20 @@ import '../../../../core/widgets/custom_button.dart';
 import '../../../../data/models/installment_model.dart';
 import '../../../../data/models/payment_method_model.dart';
 import '../../../providers/installment_provider.dart';
-import '../../widgets/installment/payment_method_card.dart';
+import '../../../widgets/installment/payment_method_card.dart';
 
 class InstallmentPaymentScreen extends ConsumerStatefulWidget {
   final Installment installment;
 
-  const InstallmentPaymentScreen({
-    super.key,
-    required this.installment,
-  });
+  const InstallmentPaymentScreen({super.key, required this.installment});
 
   @override
-  ConsumerState<InstallmentPaymentScreen> createState() => _InstallmentPaymentScreenState();
+  ConsumerState<InstallmentPaymentScreen> createState() =>
+      _InstallmentPaymentScreenState();
 }
 
-class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScreen> {
+class _InstallmentPaymentScreenState
+    extends ConsumerState<InstallmentPaymentScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _referenceController = TextEditingController();
@@ -42,8 +41,10 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
   @override
   void initState() {
     super.initState();
-    _amountController.text = widget.installment.remainingAmount.toStringAsFixed(0);
-    
+    _amountController.text = widget.installment.remainingAmount.toStringAsFixed(
+      0,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(installmentProvider.notifier).loadPaymentMethods();
     });
@@ -191,7 +192,7 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
 
   Widget _buildInstallmentDetailsCard() {
     final statusColor = _getStatusColor();
-    
+
     return Container(
       padding: EdgeInsets.all(responsiveCardPadding),
       decoration: BoxDecoration(
@@ -266,9 +267,9 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
               ),
             ],
           ),
-          
+
           SizedBox(height: responsiveSpacing),
-          
+
           // Amount details
           Row(
             children: [
@@ -284,13 +285,15 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
                 child: _buildDetailItem(
                   icon: IconsaxPlusBold.calendar,
                   label: 'Due Date',
-                  value: DateFormat('dd MMM yyyy').format(widget.installment.dueDate),
+                  value: DateFormat(
+                    'dd MMM yyyy',
+                  ).format(widget.installment.dueDate),
                   isOverdue: widget.installment.isOverdue,
                 ),
               ),
             ],
           ),
-          
+
           if (widget.installment.paidAmount > 0) ...[
             SizedBox(height: responsiveSpacing),
             Row(
@@ -299,7 +302,8 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
                   child: _buildDetailItem(
                     icon: IconsaxPlusBold.tick_circle,
                     label: 'Paid Amount',
-                    value: 'Rp ${widget.installment.paidAmount.toStringAsFixed(0)}',
+                    value:
+                        'Rp ${widget.installment.paidAmount.toStringAsFixed(0)}',
                   ),
                 ),
                 SizedBox(width: responsiveSpacing),
@@ -307,14 +311,15 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
                   child: _buildDetailItem(
                     icon: IconsaxPlusBold.money_send,
                     label: 'Remaining',
-                    value: 'Rp ${widget.installment.remainingAmount.toStringAsFixed(0)}',
+                    value:
+                        'Rp ${widget.installment.remainingAmount.toStringAsFixed(0)}',
                     highlight: true,
                   ),
                 ),
               ],
             ),
           ],
-          
+
           // Overdue warning
           if (widget.installment.isOverdue) ...[
             SizedBox(height: responsiveSpacing),
@@ -362,8 +367,11 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
       children: [
         Icon(
           icon,
-          color: isOverdue ? AppColors.error : 
-                 highlight ? AppColors.primary : AppColors.textSecondary,
+          color: isOverdue
+              ? AppColors.error
+              : highlight
+              ? AppColors.primary
+              : AppColors.textSecondary,
           size: isTablet ? 20 : 16,
         ),
         SizedBox(width: 8),
@@ -383,8 +391,11 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
                 style: TextStyle(
                   fontSize: isTablet ? 16 : 14,
                   fontWeight: FontWeight.w600,
-                  color: isOverdue ? AppColors.error :
-                         highlight ? AppColors.primary : AppColors.textPrimary,
+                  color: isOverdue
+                      ? AppColors.error
+                      : highlight
+                      ? AppColors.primary
+                      : AppColors.textPrimary,
                 ),
               ),
             ],
@@ -396,7 +407,7 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
 
   Widget _buildPaymentMethodSection() {
     final paymentMethods = ref.watch(paymentMethodsProvider);
-    
+
     return Container(
       padding: EdgeInsets.all(responsiveCardPadding),
       decoration: BoxDecoration(
@@ -411,7 +422,9 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
         ],
       ),
       child: PaymentMethodSelector(
-        paymentMethods: paymentMethods.where((method) => !method.supportsInstallments).toList(),
+        paymentMethods: paymentMethods
+            .where((method) => !method.supportsInstallments)
+            .toList(),
         selectedPaymentMethodId: _selectedPaymentMethod?.id,
         onPaymentMethodSelected: (method) {
           setState(() {
@@ -450,7 +463,7 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
             ),
           ),
           SizedBox(height: responsiveSpacing),
-          
+
           // Payment amount
           CustomTextField(
             controller: _amountController,
@@ -462,11 +475,12 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             validator: _validatePaymentAmount,
-            helperText: 'Maximum: Rp ${widget.installment.remainingAmount.toStringAsFixed(0)}',
+            helperText:
+                'Maximum: Rp ${widget.installment.remainingAmount.toStringAsFixed(0)}',
           ),
-          
+
           SizedBox(height: responsiveSpacing),
-          
+
           // Payment reference
           CustomTextField(
             controller: _referenceController,
@@ -476,9 +490,9 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
             size: TextFieldSize.medium,
             helperText: 'Optional reference for tracking',
           ),
-          
+
           SizedBox(height: responsiveSpacing),
-          
+
           // Notes
           CustomTextField(
             controller: _notesController,
@@ -496,9 +510,10 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
 
   Widget _buildActionButtons() {
     final installmentState = ref.watch(installmentProvider);
-    final canProcess = _selectedPaymentMethod != null && 
-                      _amountController.text.isNotEmpty &&
-                      !installmentState.isProcessingPayment;
+    final canProcess =
+        _selectedPaymentMethod != null &&
+        _amountController.text.isNotEmpty &&
+        !installmentState.isProcessingPayment;
 
     return Container(
       padding: responsivePadding,
@@ -550,13 +565,17 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
 
   Color _getStatusColor() {
     try {
-      return Color(int.parse(widget.installment.statusColor.replaceAll('#', '0xFF')));
+      return Color(
+        int.parse(widget.installment.statusColor.replaceAll('#', '0xFF')),
+      );
     } catch (e) {
       switch (widget.installment.status) {
         case 'paid':
           return AppColors.success;
         case 'pending':
-          return widget.installment.isOverdue ? AppColors.error : AppColors.warning;
+          return widget.installment.isOverdue
+              ? AppColors.error
+              : AppColors.warning;
         case 'overdue':
           return AppColors.error;
         case 'partially_paid':
@@ -594,23 +613,25 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
     }
 
     final amount = double.tryParse(_amountController.text) ?? 0;
-    
+
     final request = PayInstallmentRequest(
       amount: amount,
       paymentMethod: _selectedPaymentMethod!.id,
-      paymentReference: _referenceController.text.trim().isEmpty 
-          ? null 
+      paymentReference: _referenceController.text.trim().isEmpty
+          ? null
           : _referenceController.text.trim(),
-      notes: _notesController.text.trim().isEmpty 
-          ? null 
+      notes: _notesController.text.trim().isEmpty
+          ? null
           : _notesController.text.trim(),
     );
 
-    final success = await ref.read(installmentProvider.notifier).payInstallment(
-      widget.installment.transactionId,
-      widget.installment.id,
-      request,
-    );
+    final success = await ref
+        .read(installmentProvider.notifier)
+        .payInstallment(
+          widget.installment.transactionId,
+          widget.installment.id,
+          request,
+        );
 
     if (success) {
       _showSuccessSnackBar('💰 Payment processed successfully!');
@@ -656,3 +677,4 @@ class _InstallmentPaymentScreenState extends ConsumerState<InstallmentPaymentScr
     );
   }
 }
+

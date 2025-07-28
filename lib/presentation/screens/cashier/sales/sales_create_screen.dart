@@ -15,8 +15,8 @@ import '../../../providers/sales_provider.dart';
 import '../../../providers/customer_provider.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../providers/installment_provider.dart';
-import '../../widgets/installment/payment_method_card.dart';
-import '../../widgets/installment/installment_calculator.dart';
+import '../../../widgets/installment/payment_method_card.dart';
+import '../../../widgets/installment/installment_calculator.dart';
 
 class SalesCreateScreen extends ConsumerStatefulWidget {
   final Vehicle? preSelectedVehicle;
@@ -70,7 +70,7 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       if (_selectedVehicle == null) {
         ref.read(vehicleListProvider.notifier).loadVehicles();
       }
-      
+
       // Set default payment method if none selected
       Future.delayed(const Duration(milliseconds: 500), () {
         if (_selectedPaymentMethod == null) {
@@ -955,8 +955,8 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     final installmentState = ref.watch(installmentProvider);
 
     // Use default payment methods if API ones are not available
-    final effectivePaymentMethods = paymentMethods.isNotEmpty 
-        ? paymentMethods 
+    final effectivePaymentMethods = paymentMethods.isNotEmpty
+        ? paymentMethods
         : PaymentMethod.defaultPaymentMethods;
 
     return _buildFormSection(
@@ -970,14 +970,15 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
           isTablet: isTablet,
           title: 'Select Payment Method',
         ),
-        
+
         SizedBox(height: responsiveSpacing),
-        
+
         // Down Payment Field
         _buildDownPaymentField(),
-        
+
         // Installment Calculator (only for credit/financing)
-        if (_selectedPaymentMethod?.supportsInstallments == true && _selectedVehicle != null) ...[
+        if (_selectedPaymentMethod?.supportsInstallments == true &&
+            _selectedVehicle != null) ...[
           SizedBox(height: responsiveSpacing),
           InstallmentCalculator(
             vehiclePrice: _selectedVehicle!.sellingPrice,
@@ -990,9 +991,9 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
             isTablet: isTablet,
           ),
         ],
-        
+
         SizedBox(height: responsiveSpacing),
-        
+
         // Transaction Notes
         CustomTextField(
           controller: _notesController,
@@ -1014,7 +1015,7 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       _selectedPaymentMethod = paymentMethod;
       _selectedInstallmentCount = null; // Reset installment selection
     });
-    
+
     // Clear installment preview when payment method changes
     ref.read(installmentProvider.notifier).clearPreview();
   }
@@ -1023,16 +1024,18 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     setState(() {
       _selectedInstallmentCount = installmentCount;
     });
-    
+
     // Calculate installment preview
     _calculateInstallmentPreview();
   }
 
   void _calculateInstallmentPreview() {
-    if (_selectedVehicle == null || _selectedPaymentMethod == null || _selectedInstallmentCount == null) {
+    if (_selectedVehicle == null ||
+        _selectedPaymentMethod == null ||
+        _selectedInstallmentCount == null) {
       return;
     }
-    
+
     try {
       final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
       final request = PaymentPreviewRequest(
@@ -1041,7 +1044,7 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
         downPayment: downPayment,
         paymentMethodId: _selectedPaymentMethod!.id,
       );
-      
+
       ref.read(installmentProvider.notifier).calculatePaymentPreview(request);
     } catch (e) {
       print('Error calculating installment preview: $e');
@@ -1064,8 +1067,8 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       helperText: 'Minimum 10% of vehicle price',
       onChanged: (value) {
         // Recalculate installment preview when down payment changes
-        if (_selectedPaymentMethod?.supportsInstallments == true && 
-            _selectedInstallmentCount != null && 
+        if (_selectedPaymentMethod?.supportsInstallments == true &&
+            _selectedInstallmentCount != null &&
             value.isNotEmpty) {
           // Add a small delay to avoid too many API calls
           Future.delayed(const Duration(milliseconds: 500), () {

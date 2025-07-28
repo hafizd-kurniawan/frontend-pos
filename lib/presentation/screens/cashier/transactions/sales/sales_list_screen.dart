@@ -8,7 +8,6 @@ import '../../../../../core/constants/ui_constants.dart';
 import '../../../../../core/widgets/custom_button.dart';
 import '../../../../../data/models/sale_model.dart';
 import '../../../../providers/sales_provider.dart';
-import '../../../providers/sales_provider.dart';
 
 class SalesListScreen extends ConsumerStatefulWidget {
   const SalesListScreen({super.key});

@@ -294,7 +294,7 @@ class _InstallmentCalculatorState extends State<InstallmentCalculator> {
       {
         'label': 'Total Interest',
         'value': 'Rp ${preview.totalInterest.toStringAsFixed(0)}',
-        'icon': IconsaxPlusBold.percentage,
+        'icon': IconsaxPlusBold.percentage_circle,
         'highlight': false,
       },
       {
@@ -324,16 +324,16 @@ class _InstallmentCalculatorState extends State<InstallmentCalculator> {
       itemBuilder: (context, index) {
         final item = items[index];
         final isHighlight = item['highlight'] as bool;
-        
+
         return Container(
           padding: EdgeInsets.all(widget.isTablet ? 12 : 10),
           decoration: BoxDecoration(
-            color: isHighlight 
+            color: isHighlight
                 ? AppColors.success.withOpacity(0.1)
                 : Colors.white.withOpacity(0.7),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isHighlight 
+              color: isHighlight
                   ? AppColors.success.withOpacity(0.3)
                   : Colors.transparent,
             ),
@@ -342,7 +342,9 @@ class _InstallmentCalculatorState extends State<InstallmentCalculator> {
             children: [
               Icon(
                 item['icon'] as IconData,
-                color: isHighlight ? AppColors.success : AppColors.textSecondary,
+                color: isHighlight
+                    ? AppColors.success
+                    : AppColors.textSecondary,
                 size: widget.isTablet ? 20 : 18,
               ),
               SizedBox(width: widget.isTablet ? 12 : 8),
@@ -363,7 +365,9 @@ class _InstallmentCalculatorState extends State<InstallmentCalculator> {
                       style: TextStyle(
                         fontSize: widget.isTablet ? 14 : 12,
                         fontWeight: FontWeight.w600,
-                        color: isHighlight ? AppColors.success : AppColors.textPrimary,
+                        color: isHighlight
+                            ? AppColors.success
+                            : AppColors.textPrimary,
                       ),
                     ),
                   ],
@@ -376,3 +380,4 @@ class _InstallmentCalculatorState extends State<InstallmentCalculator> {
     );
   }
 }
+

@@ -4,14 +4,15 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../data/models/installment_model.dart';
 import '../../../providers/installment_provider.dart';
-import '../../widgets/installment/installment_card.dart';
+import '../../../widgets/installment/installment_card.dart';
 import 'installment_payment_screen.dart';
 
 class InstallmentListScreen extends ConsumerStatefulWidget {
   const InstallmentListScreen({super.key});
 
   @override
-  ConsumerState<InstallmentListScreen> createState() => _InstallmentListScreenState();
+  ConsumerState<InstallmentListScreen> createState() =>
+      _InstallmentListScreenState();
 }
 
 class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
@@ -19,7 +20,7 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
   late TabController _tabController;
   final _searchController = TextEditingController();
   String _searchQuery = '';
-  
+
   final List<String> _filterTabs = ['all', 'pending', 'overdue', 'paid'];
   final Map<String, String> _tabLabels = {
     'all': 'All',
@@ -38,12 +39,12 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: _filterTabs.length, vsync: this);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(installmentProvider.notifier).loadInstallments();
       ref.read(installmentProvider.notifier).loadInstallmentStats();
     });
-    
+
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text;
@@ -76,7 +77,7 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
 
   Widget _buildHeader() {
     final stats = ref.watch(installmentStatsProvider);
-    
+
     return Container(
       padding: responsivePadding,
       decoration: BoxDecoration(
@@ -187,11 +188,29 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
   Widget _buildStatsRow(Map<String, dynamic> stats) {
     return Row(
       children: [
-        Expanded(child: _buildStatItem('Pending', '${stats['pending_count'] ?? 0}', AppColors.warning)),
+        Expanded(
+          child: _buildStatItem(
+            'Pending',
+            '${stats['pending_count'] ?? 0}',
+            AppColors.warning,
+          ),
+        ),
         SizedBox(width: 12),
-        Expanded(child: _buildStatItem('Overdue', '${stats['overdue_count'] ?? 0}', AppColors.error)),
+        Expanded(
+          child: _buildStatItem(
+            'Overdue',
+            '${stats['overdue_count'] ?? 0}',
+            AppColors.error,
+          ),
+        ),
         SizedBox(width: 12),
-        Expanded(child: _buildStatItem('Paid', '${stats['paid_count'] ?? 0}', AppColors.success)),
+        Expanded(
+          child: _buildStatItem(
+            'Paid',
+            '${stats['paid_count'] ?? 0}',
+            AppColors.success,
+          ),
+        ),
       ],
     );
   }
@@ -227,17 +246,19 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
 
   Widget _buildFilterTabs() {
     final installmentState = ref.watch(installmentProvider);
-    
+
     return Container(
       color: Colors.white,
       child: TabBar(
         controller: _tabController,
         onTap: (index) {
           final filter = _filterTabs[index];
-          ref.read(installmentProvider.notifier).loadInstallments(
-            filter: filter,
-            search: _searchQuery.isNotEmpty ? _searchQuery : null,
-          );
+          ref
+              .read(installmentProvider.notifier)
+              .loadInstallments(
+                filter: filter,
+                search: _searchQuery.isNotEmpty ? _searchQuery : null,
+              );
         },
         isScrollable: !isTablet,
         labelColor: AppColors.primary,
@@ -347,9 +368,7 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                           fontSize: isTablet ? 16 : 14,
                         ),
                       ),
-                      style: TextStyle(
-                        fontSize: isTablet ? 16 : 14,
-                      ),
+                      style: TextStyle(fontSize: isTablet ? 16 : 14),
                     ),
                   ),
                 ],
@@ -382,17 +401,17 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
 
   Widget _buildInstallmentList() {
     final installmentState = ref.watch(installmentProvider);
-    
+
     if (installmentState.isLoading) {
       return _buildLoadingState();
     }
-    
+
     if (installmentState.error != null) {
       return _buildErrorState(installmentState.error!);
     }
-    
+
     final filteredInstallments = ref.watch(filteredInstallmentsProvider);
-    
+
     return RefreshIndicator(
       onRefresh: () => ref.read(installmentProvider.notifier).refreshAll(),
       child: Container(
@@ -463,7 +482,8 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
             ),
             SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: () => ref.read(installmentProvider.notifier).refreshAll(),
+              onPressed: () =>
+                  ref.read(installmentProvider.notifier).refreshAll(),
               icon: Icon(IconsaxPlusBold.refresh),
               label: Text('Retry'),
               style: ElevatedButton.styleFrom(
@@ -518,10 +538,12 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
     Future.delayed(Duration(milliseconds: 500), () {
       if (_searchController.text == _searchQuery) {
         final currentFilter = ref.read(installmentProvider).selectedFilter;
-        ref.read(installmentProvider.notifier).loadInstallments(
-          filter: currentFilter,
-          search: _searchQuery.isNotEmpty ? _searchQuery : null,
-        );
+        ref
+            .read(installmentProvider.notifier)
+            .loadInstallments(
+              filter: currentFilter,
+              search: _searchQuery.isNotEmpty ? _searchQuery : null,
+            );
       }
     });
   }
@@ -553,10 +575,13 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                 if (installment.customerEmail != null)
                   _buildDetailRow('Email', installment.customerEmail!),
                 if (installment.customerType != null)
-                  _buildDetailRow('Type', installment.customerType!.toUpperCase()),
+                  _buildDetailRow(
+                    'Type',
+                    installment.customerType!.toUpperCase(),
+                  ),
                 SizedBox(height: 16),
               ],
-              
+
               // Installment Information Section
               Text(
                 'Installment Details',
@@ -567,16 +592,32 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                 ),
               ),
               SizedBox(height: 8),
-              _buildDetailRow('Transaction ID', installment.transactionId.toString()),
-              _buildDetailRow('Amount', 'Rp ${installment.amount.toStringAsFixed(0)}'),
+              _buildDetailRow(
+                'Transaction ID',
+                installment.transactionId.toString(),
+              ),
+              _buildDetailRow(
+                'Amount',
+                'Rp ${installment.amount.toStringAsFixed(0)}',
+              ),
               _buildDetailRow('Status', installment.statusDisplayName),
-              _buildDetailRow('Due Date', installment.dueDate.toString().substring(0, 10)),
+              _buildDetailRow(
+                'Due Date',
+                installment.dueDate.toString().substring(0, 10),
+              ),
               if (installment.paidAmount > 0)
-                _buildDetailRow('Paid Amount', 'Rp ${installment.paidAmount.toStringAsFixed(0)}'),
-              _buildDetailRow('Remaining', 'Rp ${installment.remainingAmount.toStringAsFixed(0)}'),
-              
+                _buildDetailRow(
+                  'Paid Amount',
+                  'Rp ${installment.paidAmount.toStringAsFixed(0)}',
+                ),
+              _buildDetailRow(
+                'Remaining',
+                'Rp ${installment.remainingAmount.toStringAsFixed(0)}',
+              ),
+
               // Transaction Information Section
-              if (installment.vehicleInfo != null || installment.saleDate != null) ...[
+              if (installment.vehicleInfo != null ||
+                  installment.saleDate != null) ...[
                 SizedBox(height: 16),
                 Text(
                   'Transaction Details',
@@ -592,11 +633,17 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                 if (installment.saleDate != null)
                   _buildDetailRow('Sale Date', installment.saleDate!),
                 if (installment.totalSaleAmount != null)
-                  _buildDetailRow('Total Amount', 'Rp ${installment.totalSaleAmount!.toStringAsFixed(0)}'),
+                  _buildDetailRow(
+                    'Total Amount',
+                    'Rp ${installment.totalSaleAmount!.toStringAsFixed(0)}',
+                  ),
                 if (installment.downPayment != null)
-                  _buildDetailRow('Down Payment', 'Rp ${installment.downPayment!.toStringAsFixed(0)}'),
+                  _buildDetailRow(
+                    'Down Payment',
+                    'Rp ${installment.downPayment!.toStringAsFixed(0)}',
+                  ),
               ],
-              
+
               if (installment.notes?.isNotEmpty == true) ...[
                 SizedBox(height: 16),
                 Text(
@@ -639,7 +686,7 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
       ),
     );
   }
-  
+
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 2),
@@ -657,21 +704,16 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            child: Text(value, style: TextStyle(fontWeight: FontWeight.w500)),
           ),
         ],
       ),
     );
   }
-  
+
   void _showCustomerManagement(Installment installment) {
     if (!installment.hasCustomerInfo) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -727,28 +769,28 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
       ),
     );
   }
-  
+
   void _viewCustomerDetails(int customerId) {
     // TODO: Navigate to customer detail screen or show customer details dialog
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Customer details feature will be implemented')),
     );
   }
-  
+
   void _editCustomerInfo(Installment installment) {
     // TODO: Show customer edit form
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Edit customer feature will be implemented')),
     );
   }
-  
+
   void _sendPaymentReminder(Installment installment) {
     // TODO: Implement payment reminder functionality
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Payment reminder feature will be implemented')),
     );
   }
-  
+
   void _settleCustomerInstallments(int customerId) {
     // TODO: Show settlement dialog and process
     ScaffoldMessenger.of(context).showSnackBar(
@@ -765,7 +807,8 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => InstallmentPaymentScreen(installment: installment),
+        builder: (context) =>
+            InstallmentPaymentScreen(installment: installment),
       ),
     ).then((result) {
       if (result == true) {
@@ -775,7 +818,7 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
     });
   }
 
-  void _showInstallmentDetails(Installment installment) {
+  void _showInstallmentDetailsxx(Installment installment) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -802,10 +845,13 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                 if (installment.customerEmail != null)
                   _buildDetailRow('Email', installment.customerEmail!),
                 if (installment.customerType != null)
-                  _buildDetailRow('Type', installment.customerType!.toUpperCase()),
+                  _buildDetailRow(
+                    'Type',
+                    installment.customerType!.toUpperCase(),
+                  ),
                 SizedBox(height: 16),
               ],
-              
+
               // Installment Information Section
               Text(
                 'Installment Details',
@@ -816,16 +862,32 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                 ),
               ),
               SizedBox(height: 8),
-              _buildDetailRow('Transaction ID', installment.transactionId.toString()),
-              _buildDetailRow('Amount', 'Rp ${installment.amount.toStringAsFixed(0)}'),
+              _buildDetailRow(
+                'Transaction ID',
+                installment.transactionId.toString(),
+              ),
+              _buildDetailRow(
+                'Amount',
+                'Rp ${installment.amount.toStringAsFixed(0)}',
+              ),
               _buildDetailRow('Status', installment.statusDisplayName),
-              _buildDetailRow('Due Date', installment.dueDate.toString().substring(0, 10)),
+              _buildDetailRow(
+                'Due Date',
+                installment.dueDate.toString().substring(0, 10),
+              ),
               if (installment.paidAmount > 0)
-                _buildDetailRow('Paid Amount', 'Rp ${installment.paidAmount.toStringAsFixed(0)}'),
-              _buildDetailRow('Remaining', 'Rp ${installment.remainingAmount.toStringAsFixed(0)}'),
-              
+                _buildDetailRow(
+                  'Paid Amount',
+                  'Rp ${installment.paidAmount.toStringAsFixed(0)}',
+                ),
+              _buildDetailRow(
+                'Remaining',
+                'Rp ${installment.remainingAmount.toStringAsFixed(0)}',
+              ),
+
               // Transaction Information Section
-              if (installment.vehicleInfo != null || installment.saleDate != null) ...[
+              if (installment.vehicleInfo != null ||
+                  installment.saleDate != null) ...[
                 SizedBox(height: 16),
                 Text(
                   'Transaction Details',
@@ -841,11 +903,17 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                 if (installment.saleDate != null)
                   _buildDetailRow('Sale Date', installment.saleDate!),
                 if (installment.totalSaleAmount != null)
-                  _buildDetailRow('Total Amount', 'Rp ${installment.totalSaleAmount!.toStringAsFixed(0)}'),
+                  _buildDetailRow(
+                    'Total Amount',
+                    'Rp ${installment.totalSaleAmount!.toStringAsFixed(0)}',
+                  ),
                 if (installment.downPayment != null)
-                  _buildDetailRow('Down Payment', 'Rp ${installment.downPayment!.toStringAsFixed(0)}'),
+                  _buildDetailRow(
+                    'Down Payment',
+                    'Rp ${installment.downPayment!.toStringAsFixed(0)}',
+                  ),
               ],
-              
+
               if (installment.notes?.isNotEmpty == true) ...[
                 SizedBox(height: 16),
                 Text(
