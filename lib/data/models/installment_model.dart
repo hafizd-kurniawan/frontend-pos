@@ -144,6 +144,20 @@ class Installment {
   final double penaltyAmount;
   final DateTime createdAt;
   final DateTime updatedAt;
+  
+  // Customer information (populated from transaction/sale)
+  final int? customerId;
+  final String? customerName;
+  final String? customerPhone;
+  final String? customerEmail;
+  final String? customerAddress;
+  final String? customerType; // individual, corporate
+  
+  // Transaction/Sale information
+  final String? saleDate;
+  final double? totalSaleAmount;
+  final double? downPayment;
+  final String? vehicleInfo; // e.g., "Honda Civic 2023"
 
   Installment({
     required this.id,
@@ -162,6 +176,18 @@ class Installment {
     this.penaltyAmount = 0.0,
     required this.createdAt,
     required this.updatedAt,
+    // Customer information
+    this.customerId,
+    this.customerName,
+    this.customerPhone,
+    this.customerEmail,
+    this.customerAddress,
+    this.customerType,
+    // Transaction information
+    this.saleDate,
+    this.totalSaleAmount,
+    this.downPayment,
+    this.vehicleInfo,
   });
 
   factory Installment.fromJson(Map<String, dynamic> json) {
@@ -182,6 +208,18 @@ class Installment {
       penaltyAmount: (json['penalty_amount'] ?? 0).toDouble(),
       createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
       updatedAt: DateTime.parse(json['updated_at'] ?? DateTime.now().toIso8601String()),
+      // Customer information
+      customerId: json['customer_id'],
+      customerName: json['customer_name'],
+      customerPhone: json['customer_phone'],
+      customerEmail: json['customer_email'],
+      customerAddress: json['customer_address'],
+      customerType: json['customer_type'],
+      // Transaction information  
+      saleDate: json['sale_date'],
+      totalSaleAmount: json['total_sale_amount'] != null ? (json['total_sale_amount']).toDouble() : null,
+      downPayment: json['down_payment'] != null ? (json['down_payment']).toDouble() : null,
+      vehicleInfo: json['vehicle_info'],
     );
   }
 
@@ -203,6 +241,18 @@ class Installment {
       'penalty_amount': penaltyAmount,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      // Customer information
+      'customer_id': customerId,
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'customer_email': customerEmail,
+      'customer_address': customerAddress,
+      'customer_type': customerType,
+      // Transaction information
+      'sale_date': saleDate,
+      'total_sale_amount': totalSaleAmount,
+      'down_payment': downPayment,
+      'vehicle_info': vehicleInfo,
     };
   }
 
@@ -223,6 +273,18 @@ class Installment {
     double? penaltyAmount,
     DateTime? createdAt,
     DateTime? updatedAt,
+    // Customer information
+    int? customerId,
+    String? customerName,
+    String? customerPhone,
+    String? customerEmail,
+    String? customerAddress,
+    String? customerType,
+    // Transaction information
+    String? saleDate,
+    double? totalSaleAmount,
+    double? downPayment,
+    String? vehicleInfo,
   }) {
     return Installment(
       id: id ?? this.id,
@@ -241,6 +303,18 @@ class Installment {
       penaltyAmount: penaltyAmount ?? this.penaltyAmount,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      // Customer information
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      customerEmail: customerEmail ?? this.customerEmail,
+      customerAddress: customerAddress ?? this.customerAddress,
+      customerType: customerType ?? this.customerType,
+      // Transaction information
+      saleDate: saleDate ?? this.saleDate,
+      totalSaleAmount: totalSaleAmount ?? this.totalSaleAmount,
+      downPayment: downPayment ?? this.downPayment,
+      vehicleInfo: vehicleInfo ?? this.vehicleInfo,
     );
   }
 
@@ -250,6 +324,36 @@ class Installment {
   bool get isPending => status == 'pending';
   bool get isPartiallyPaid => status == 'partially_paid';
   double get remainingAmount => amount - paidAmount;
+  
+  // Customer helper getters
+  bool get hasCustomerInfo => customerId != null && customerName != null;
+  String get customerDisplayName => customerName ?? 'Unknown Customer';
+  String get customerContactInfo {
+    if (customerPhone != null && customerEmail != null) {
+      return '$customerPhone • $customerEmail';
+    } else if (customerPhone != null) {
+      return customerPhone!;
+    } else if (customerEmail != null) {
+      return customerEmail!;
+    }
+    return 'No contact info';
+  }
+  
+  // Transaction helper getters
+  String get transactionDisplayInfo {
+    final parts = <String>[];
+    if (vehicleInfo != null) parts.add(vehicleInfo!);
+    if (saleDate != null) parts.add('Sale: $saleDate');
+    return parts.isNotEmpty ? parts.join(' • ') : 'Transaction #$transactionId';
+  }
+  
+  String get paymentProgress {
+    if (totalSaleAmount != null && downPayment != null) {
+      final progress = (paidAmount + downPayment!) / totalSaleAmount! * 100;
+      return '${progress.toStringAsFixed(1)}%';
+    }
+    return 'N/A';
+  }
 
   // Status color helpers
   String get statusColor {

@@ -114,13 +114,14 @@ class InstallmentNotifier extends StateNotifier<InstallmentState> {
     }
   }
 
-  /// Load installments with optional filter
-  Future<void> loadInstallments({String? filter}) async {
+  /// Load installments with optional filter and search
+  Future<void> loadInstallments({String? filter, String? search}) async {
     state = state.copyWith(isLoading: true, error: null);
     
     try {
       final installments = await _installmentService.getAllInstallments(
         status: filter,
+        search: search,
       );
       
       state = state.copyWith(
@@ -134,6 +135,70 @@ class InstallmentNotifier extends StateNotifier<InstallmentState> {
         isLoading: false,
         error: e.toString(),
       );
+    }
+  }
+  
+  /// Load customer installment details
+  Future<Map<String, dynamic>> loadCustomerInstallments(int customerId) async {
+    try {
+      return await _installmentService.getCustomerInstallments(customerId);
+    } catch (e) {
+      print('❌ Error loading customer installments: $e');
+      state = state.copyWith(error: e.toString());
+      return {};
+    }
+  }
+  
+  /// Update customer information
+  Future<bool> updateCustomerInfo(int customerId, Map<String, dynamic> customerData) async {
+    try {
+      final success = await _installmentService.updateCustomerInfo(customerId, customerData);
+      
+      if (success) {
+        // Reload installments to get updated customer data
+        await loadInstallments(filter: state.selectedFilter);
+      }
+      
+      return success;
+    } catch (e) {
+      print('❌ Error updating customer info: $e');
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+  
+  /// Settle customer installments
+  Future<Map<String, dynamic>?> settleCustomerInstallments(
+    int customerId,
+    Map<String, dynamic> settlementData,
+  ) async {
+    try {
+      final result = await _installmentService.settleCustomerInstallments(customerId, settlementData);
+      
+      if (result != null) {
+        // Reload data after settlement
+        await Future.wait([
+          loadInstallments(filter: state.selectedFilter),
+          loadInstallmentStats(),
+        ]);
+      }
+      
+      return result;
+    } catch (e) {
+      print('❌ Error settling customer installments: $e');
+      state = state.copyWith(error: e.toString());
+      return null;
+    }
+  }
+  
+  /// Load overdue customers summary
+  Future<Map<String, dynamic>> loadOverdueCustomers() async {
+    try {
+      return await _installmentService.getOverdueCustomers();
+    } catch (e) {
+      print('❌ Error loading overdue customers: $e');
+      state = state.copyWith(error: e.toString());
+      return {};
     }
   }
 

@@ -150,14 +150,15 @@ class InstallmentService {
     }
   }
 
-  /// Get all installments with filters
+  /// Get all installments with filters and customer data
   Future<List<Installment>> getAllInstallments({
     String? status,
     int page = 1,
     int limit = 20,
+    String? search,
   }) async {
     try {
-      print('🔍 Fetching all installments...');
+      print('🔍 Fetching all installments with customer data...');
 
       final Map<String, dynamic> queryParams = {
         'page': page,
@@ -167,25 +168,147 @@ class InstallmentService {
       if (status != null && status.isNotEmpty && status != 'all') {
         queryParams['status'] = status;
       }
+      
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
 
-      final response = await DioClient.instance.get(
-        '/api/sales/installments',
-        queryParameters: queryParams,
-      );
+      // Try the new endpoint with customer data first
+      try {
+        final response = await DioClient.instance.get(
+          '/api/sales/installments/with-customers',
+          queryParameters: queryParams,
+        );
 
-      print('✅ All installments response: ${response.data}');
+        print('✅ Installments with customer data response: ${response.data}');
 
-      if (response.data['success'] == true) {
-        final installmentsData = response.data['data']['installments'] as List;
-        return installmentsData
-            .map((item) => Installment.fromJson(item as Map<String, dynamic>))
-            .toList();
-      } else {
-        throw Exception(response.data['message'] ?? 'Failed to load installments');
+        if (response.data['success'] == true) {
+          final installmentsData = response.data['data']['installments'] as List;
+          return installmentsData
+              .map((item) => Installment.fromJson(item as Map<String, dynamic>))
+              .toList();
+        } else {
+          throw Exception(response.data['message'] ?? 'Failed to load installments with customer data');
+        }
+      } catch (e) {
+        print('⚠️ Customer data endpoint not available, falling back to basic endpoint: $e');
+        
+        // Fallback to original endpoint
+        final response = await DioClient.instance.get(
+          '/api/sales/installments',
+          queryParameters: queryParams,
+        );
+
+        print('✅ Basic installments response: ${response.data}');
+
+        if (response.data['success'] == true) {
+          final installmentsData = response.data['data']['installments'] as List;
+          return installmentsData
+              .map((item) => Installment.fromJson(item as Map<String, dynamic>))
+              .toList();
+        } else {
+          throw Exception(response.data['message'] ?? 'Failed to load installments');
+        }
       }
     } catch (e) {
       print('❌ Error loading all installments: $e');
       return [];
+    }
+  }
+  
+  /// Get customer installment details
+  Future<Map<String, dynamic>> getCustomerInstallments(int customerId) async {
+    try {
+      print('🔍 Fetching customer installments: $customerId');
+
+      final response = await DioClient.instance.get(
+        '/api/sales/customers/$customerId/installments',
+      );
+
+      print('✅ Customer installments response: ${response.data}');
+
+      if (response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      } else {
+        throw Exception(response.data['message'] ?? 'Failed to load customer installments');
+      }
+    } catch (e) {
+      print('❌ Error loading customer installments: $e');
+      return {};
+    }
+  }
+  
+  /// Update customer information
+  Future<bool> updateCustomerInfo(int customerId, Map<String, dynamic> customerData) async {
+    try {
+      print('📝 Updating customer info: $customerId');
+      print('📤 Customer data: $customerData');
+
+      final response = await DioClient.instance.patch(
+        '/api/sales/customers/$customerId',
+        data: customerData,
+      );
+
+      print('✅ Update customer response: ${response.data}');
+
+      return response.data['success'] == true;
+    } catch (e) {
+      print('❌ Error updating customer info: $e');
+      return false;
+    }
+  }
+  
+  /// Settle customer installments
+  Future<Map<String, dynamic>?> settleCustomerInstallments(
+    int customerId,
+    Map<String, dynamic> settlementData,
+  ) async {
+    try {
+      print('💰 Settling customer installments: $customerId');
+      print('📤 Settlement data: $settlementData');
+
+      final response = await DioClient.instance.post(
+        '/api/sales/customers/$customerId/installments/settle',
+        data: settlementData,
+      );
+
+      print('✅ Settlement response: ${response.data}');
+
+      if (response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      } else {
+        throw Exception(response.data['message'] ?? 'Failed to settle installments');
+      }
+    } catch (e) {
+      print('❌ Error settling installments: $e');
+      return null;
+    }
+  }
+  
+  /// Get overdue customers summary
+  Future<Map<String, dynamic>> getOverdueCustomers() async {
+    try {
+      print('🔍 Fetching overdue customers...');
+
+      final response = await DioClient.instance.get('/api/sales/installments/overdue-customers');
+
+      print('✅ Overdue customers response: ${response.data}');
+
+      if (response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      } else {
+        throw Exception(response.data['message'] ?? 'Failed to load overdue customers');
+      }
+    } catch (e) {
+      print('❌ Error loading overdue customers: $e');
+      return {
+        'customers': [],
+        'summary': {
+          'total_overdue_customers': 0,
+          'total_overdue_amount': 0.0,
+          'average_overdue_days': 0,
+        }
+      };
     }
   }
 

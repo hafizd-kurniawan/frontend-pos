@@ -18,6 +18,7 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _searchController = TextEditingController();
+  String _searchQuery = '';
   
   final List<String> _filterTabs = ['all', 'pending', 'overdue', 'paid'];
   final Map<String, String> _tabLabels = {
@@ -41,6 +42,13 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(installmentProvider.notifier).loadInstallments();
       ref.read(installmentProvider.notifier).loadInstallmentStats();
+    });
+    
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+      _performSearch();
     });
   }
 
@@ -226,7 +234,10 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
         controller: _tabController,
         onTap: (index) {
           final filter = _filterTabs[index];
-          ref.read(installmentProvider.notifier).loadInstallments(filter: filter);
+          ref.read(installmentProvider.notifier).loadInstallments(
+            filter: filter,
+            search: _searchQuery.isNotEmpty ? _searchQuery : null,
+          );
         },
         isScrollable: !isTablet,
         labelColor: AppColors.primary,
@@ -325,8 +336,11 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
                   Expanded(
                     child: TextField(
                       controller: _searchController,
+                      onChanged: (value) {
+                        // Search is handled by the controller listener
+                      },
                       decoration: InputDecoration(
-                        hintText: 'Search installments...',
+                        hintText: 'Search by customer name, phone, vehicle...',
                         border: InputBorder.none,
                         hintStyle: TextStyle(
                           color: AppColors.textSecondary,
@@ -499,6 +513,249 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
     );
   }
 
+  void _performSearch() {
+    // Debounce search to avoid too many API calls
+    Future.delayed(Duration(milliseconds: 500), () {
+      if (_searchController.text == _searchQuery) {
+        final currentFilter = ref.read(installmentProvider).selectedFilter;
+        ref.read(installmentProvider.notifier).loadInstallments(
+          filter: currentFilter,
+          search: _searchQuery.isNotEmpty ? _searchQuery : null,
+        );
+      }
+    });
+  }
+
+  void _showInstallmentDetails(Installment installment) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Installment #${installment.installmentNumber}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Customer Information Section
+              if (installment.hasCustomerInfo) ...[
+                Text(
+                  'Customer Information',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                SizedBox(height: 8),
+                _buildDetailRow('Name', installment.customerDisplayName),
+                if (installment.customerPhone != null)
+                  _buildDetailRow('Phone', installment.customerPhone!),
+                if (installment.customerEmail != null)
+                  _buildDetailRow('Email', installment.customerEmail!),
+                if (installment.customerType != null)
+                  _buildDetailRow('Type', installment.customerType!.toUpperCase()),
+                SizedBox(height: 16),
+              ],
+              
+              // Installment Information Section
+              Text(
+                'Installment Details',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: AppColors.primary,
+                ),
+              ),
+              SizedBox(height: 8),
+              _buildDetailRow('Transaction ID', installment.transactionId.toString()),
+              _buildDetailRow('Amount', 'Rp ${installment.amount.toStringAsFixed(0)}'),
+              _buildDetailRow('Status', installment.statusDisplayName),
+              _buildDetailRow('Due Date', installment.dueDate.toString().substring(0, 10)),
+              if (installment.paidAmount > 0)
+                _buildDetailRow('Paid Amount', 'Rp ${installment.paidAmount.toStringAsFixed(0)}'),
+              _buildDetailRow('Remaining', 'Rp ${installment.remainingAmount.toStringAsFixed(0)}'),
+              
+              // Transaction Information Section
+              if (installment.vehicleInfo != null || installment.saleDate != null) ...[
+                SizedBox(height: 16),
+                Text(
+                  'Transaction Details',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                SizedBox(height: 8),
+                if (installment.vehicleInfo != null)
+                  _buildDetailRow('Vehicle', installment.vehicleInfo!),
+                if (installment.saleDate != null)
+                  _buildDetailRow('Sale Date', installment.saleDate!),
+                if (installment.totalSaleAmount != null)
+                  _buildDetailRow('Total Amount', 'Rp ${installment.totalSaleAmount!.toStringAsFixed(0)}'),
+                if (installment.downPayment != null)
+                  _buildDetailRow('Down Payment', 'Rp ${installment.downPayment!.toStringAsFixed(0)}'),
+              ],
+              
+              if (installment.notes?.isNotEmpty == true) ...[
+                SizedBox(height: 16),
+                Text(
+                  'Notes',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(installment.notes!),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (installment.hasCustomerInfo)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _showCustomerManagement(installment);
+              },
+              icon: Icon(IconsaxPlusBold.user_edit),
+              label: Text('Manage Customer'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close'),
+          ),
+          if (!installment.isPaid)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _onPayTap(installment);
+              },
+              child: Text('Pay Now'),
+            ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _showCustomerManagement(Installment installment) {
+    if (!installment.hasCustomerInfo) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Manage Customer: ${installment.customerDisplayName}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(IconsaxPlusBold.user),
+              title: Text('View Customer Details'),
+              subtitle: Text('See all installments for this customer'),
+              onTap: () {
+                Navigator.pop(context);
+                _viewCustomerDetails(installment.customerId!);
+              },
+            ),
+            ListTile(
+              leading: Icon(IconsaxPlusBold.edit),
+              title: Text('Update Customer Info'),
+              subtitle: Text('Edit customer contact information'),
+              onTap: () {
+                Navigator.pop(context);
+                _editCustomerInfo(installment);
+              },
+            ),
+            if (installment.isOverdue)
+              ListTile(
+                leading: Icon(IconsaxPlusBold.message),
+                title: Text('Send Reminder'),
+                subtitle: Text('Send payment reminder to customer'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _sendPaymentReminder(installment);
+                },
+              ),
+            ListTile(
+              leading: Icon(IconsaxPlusBold.money_recive),
+              title: Text('Settle All Installments'),
+              subtitle: Text('Mark all customer installments as finished'),
+              onTap: () {
+                Navigator.pop(context);
+                _settleCustomerInstallments(installment.customerId!);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _viewCustomerDetails(int customerId) {
+    // TODO: Navigate to customer detail screen or show customer details dialog
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Customer details feature will be implemented')),
+    );
+  }
+  
+  void _editCustomerInfo(Installment installment) {
+    // TODO: Show customer edit form
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Edit customer feature will be implemented')),
+    );
+  }
+  
+  void _sendPaymentReminder(Installment installment) {
+    // TODO: Implement payment reminder functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Payment reminder feature will be implemented')),
+    );
+  }
+  
+  void _settleCustomerInstallments(int customerId) {
+    // TODO: Show settlement dialog and process
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Settlement feature will be implemented')),
+    );
+  }
+
   void _onInstallmentTap(Installment installment) {
     // Navigate to installment details or show details dialog
     _showInstallmentDetails(installment);
@@ -523,21 +780,98 @@ class _InstallmentListScreenState extends ConsumerState<InstallmentListScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Installment #${installment.installmentNumber}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Transaction ID: ${installment.transactionId}'),
-            Text('Amount: Rp ${installment.amount.toStringAsFixed(0)}'),
-            Text('Status: ${installment.statusDisplayName}'),
-            Text('Due Date: ${installment.dueDate.toString().substring(0, 10)}'),
-            if (installment.paidAmount > 0)
-              Text('Paid Amount: Rp ${installment.paidAmount.toStringAsFixed(0)}'),
-            if (installment.notes?.isNotEmpty == true)
-              Text('Notes: ${installment.notes}'),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Customer Information Section
+              if (installment.hasCustomerInfo) ...[
+                Text(
+                  'Customer Information',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                SizedBox(height: 8),
+                _buildDetailRow('Name', installment.customerDisplayName),
+                if (installment.customerPhone != null)
+                  _buildDetailRow('Phone', installment.customerPhone!),
+                if (installment.customerEmail != null)
+                  _buildDetailRow('Email', installment.customerEmail!),
+                if (installment.customerType != null)
+                  _buildDetailRow('Type', installment.customerType!.toUpperCase()),
+                SizedBox(height: 16),
+              ],
+              
+              // Installment Information Section
+              Text(
+                'Installment Details',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: AppColors.primary,
+                ),
+              ),
+              SizedBox(height: 8),
+              _buildDetailRow('Transaction ID', installment.transactionId.toString()),
+              _buildDetailRow('Amount', 'Rp ${installment.amount.toStringAsFixed(0)}'),
+              _buildDetailRow('Status', installment.statusDisplayName),
+              _buildDetailRow('Due Date', installment.dueDate.toString().substring(0, 10)),
+              if (installment.paidAmount > 0)
+                _buildDetailRow('Paid Amount', 'Rp ${installment.paidAmount.toStringAsFixed(0)}'),
+              _buildDetailRow('Remaining', 'Rp ${installment.remainingAmount.toStringAsFixed(0)}'),
+              
+              // Transaction Information Section
+              if (installment.vehicleInfo != null || installment.saleDate != null) ...[
+                SizedBox(height: 16),
+                Text(
+                  'Transaction Details',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                SizedBox(height: 8),
+                if (installment.vehicleInfo != null)
+                  _buildDetailRow('Vehicle', installment.vehicleInfo!),
+                if (installment.saleDate != null)
+                  _buildDetailRow('Sale Date', installment.saleDate!),
+                if (installment.totalSaleAmount != null)
+                  _buildDetailRow('Total Amount', 'Rp ${installment.totalSaleAmount!.toStringAsFixed(0)}'),
+                if (installment.downPayment != null)
+                  _buildDetailRow('Down Payment', 'Rp ${installment.downPayment!.toStringAsFixed(0)}'),
+              ],
+              
+              if (installment.notes?.isNotEmpty == true) ...[
+                SizedBox(height: 16),
+                Text(
+                  'Notes',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(installment.notes!),
+              ],
+            ],
+          ),
         ),
         actions: [
+          if (installment.hasCustomerInfo)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _showCustomerManagement(installment);
+              },
+              icon: Icon(IconsaxPlusBold.user_edit),
+              label: Text('Manage Customer'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text('Close'),

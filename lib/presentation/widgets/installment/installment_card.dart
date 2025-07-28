@@ -47,6 +47,10 @@ class InstallmentCard extends StatelessWidget {
         child: Column(
           children: [
             _buildHeader(statusColor),
+            if (installment.hasCustomerInfo) ...[
+              SizedBox(height: isTablet ? 8 : 6),
+              _buildCustomerInfo(),
+            ],
             SizedBox(height: isTablet ? 12 : 8),
             _buildContent(),
             if (showPayButton && !installment.isPaid) ...[
@@ -92,7 +96,7 @@ class InstallmentCard extends StatelessWidget {
                 ),
               ),
               Text(
-                'Transaction #${installment.transactionId}',
+                installment.transactionDisplayInfo,
                 style: TextStyle(
                   fontSize: isTablet ? 12 : 10,
                   color: AppColors.textSecondary,
@@ -122,6 +126,81 @@ class InstallmentCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCustomerInfo() {
+    if (!installment.hasCustomerInfo) return const SizedBox.shrink();
+    
+    return Container(
+      padding: EdgeInsets.all(isTablet ? 12 : 8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(isTablet ? 8 : 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              IconsaxPlusBold.user,
+              color: AppColors.primary,
+              size: isTablet ? 16 : 14,
+            ),
+          ),
+          SizedBox(width: isTablet ? 12 : 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  installment.customerDisplayName,
+                  style: TextStyle(
+                    fontSize: isTablet ? 14 : 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (installment.customerContactInfo != 'No contact info')
+                  Text(
+                    installment.customerContactInfo,
+                    style: TextStyle(
+                      fontSize: isTablet ? 11 : 9,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (installment.customerType != null)
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 8 : 6,
+                vertical: isTablet ? 4 : 2,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                installment.customerType!.toUpperCase(),
+                style: TextStyle(
+                  fontSize: isTablet ? 10 : 8,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
