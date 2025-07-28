@@ -3,45 +3,38 @@ import '../../data/models/user_model.dart';
 import '../../data/services/auth_service.dart';
 import '../../core/network/dio_client.dart';
 
-// Auth Service Provider
-final authServiceProvider = Provider<AuthService>((ref) {
-  return AuthService();
-});
-
-// Auth State
+// Auth state
 class AuthState {
   final User? user;
-  final String? token;
+  final bool isAuthenticated;
   final bool isLoading;
   final String? error;
-  final bool isAuthenticated;
 
   AuthState({
     this.user,
-    this.token,
+    this.isAuthenticated = false,
     this.isLoading = false,
     this.error,
-    this.isAuthenticated = false,
   });
 
   AuthState copyWith({
     User? user,
-    String? token,
+    bool? isAuthenticated,
     bool? isLoading,
     String? error,
-    bool? isAuthenticated,
+    bool clearUser = false,
+    bool clearError = false,
   }) {
     return AuthState(
-      user: user ?? this.user,
-      token: token ?? this.token,
-      isLoading: isLoading ?? this.isLoading,
-      error: error,
+      user: clearUser ? null : (user ?? this.user),
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      isLoading: isLoading ?? this.isLoading,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 }
 
-// Auth State Notifier
+// Auth notifier
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
 
@@ -51,115 +44,114 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String username,
     required String password,
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
-
     try {
-      print('🔐 AuthNotifier: Starting login process');
+      state = state.copyWith(isLoading: true, clearError: true);
+
       final authResponse = await _authService.login(
         username: username,
         password: password,
       );
 
-      print('✅ AuthNotifier: Login successful');
-      print('👤 User: ${authResponse.user}');
-      print('🎫 Token: ${authResponse.token.substring(0, 20)}...');
+      DioClient.setAuthToken(authResponse.token);
 
       state = state.copyWith(
         user: authResponse.user,
-        token: authResponse.token,
-        isLoading: false,
         isAuthenticated: true,
-        error: null,
+        isLoading: false,
       );
-
-      // TODO: Store token in secure storage
-      // await _storeToken(authResponse.token);
-
-      DioClient.instance.setAuthToken(authResponse.token);
 
       return true;
     } catch (e) {
-      print('❌ AuthNotifier: Login failed - $e');
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-        isAuthenticated: false,
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
   }
 
   Future<void> logout() async {
-    print('🚪 AuthNotifier: Starting logout process');
-
     try {
+      state = state.copyWith(isLoading: true, clearError: true);
+
       await _authService.logout();
-      print('✅ AuthNotifier: Server logout successful');
-    } catch (e) {
-      print(
-        '⚠️ AuthNotifier: Server logout failed, but continuing with local logout',
+
+      DioClient.clearAuthToken();
+
+      state = state.copyWith(
+        isAuthenticated: false,
+        isLoading: false,
+        clearUser: true,
       );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
-
-    // Clear local state regardless of server response
-    state = AuthState();
-
-    // TODO: Clear stored token
-    // await _clearStoredToken();
-
-    print('✅ AuthNotifier: Local logout completed');
   }
 
-  Future<void> loadCurrentUser() async {
-    if (state.token == null) {
-      print('⚠️ AuthNotifier: No token available, skipping user load');
-      return;
-    }
-
+  Future<bool> refreshToken() async {
     try {
-      print('👤 AuthNotifier: Loading current user');
+      state = state.copyWith(isLoading: true, clearError: true);
+
+      final authResponse = await _authService.refreshToken();
+
+      DioClient.setAuthToken(authResponse.token);
+
+      state = state.copyWith(
+        user: authResponse.user,
+        isAuthenticated: true,
+        isLoading: false,
+      );
+
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
+    }
+  }
+
+  Future<void> getCurrentUser() async {
+    try {
+      state = state.copyWith(isLoading: true, clearError: true);
+
       final user = await _authService.getCurrentUser();
 
-      if (user != null) {
-        state = state.copyWith(user: user, isAuthenticated: true);
-        print('✅ AuthNotifier: Current user loaded');
-      } else {
-        print('⚠️ AuthNotifier: No current user found');
-        state = AuthState(); // Clear auth state
-      }
+      state = state.copyWith(
+        user: user,
+        isAuthenticated: true,
+        isLoading: false,
+      );
     } catch (e) {
-      print('❌ AuthNotifier: Failed to load current user - $e');
-      state = AuthState(); // Clear auth state on error
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   void clearError() {
-    state = state.copyWith(error: null);
+    state = state.copyWith(clearError: true);
   }
 }
 
-// Auth Provider
+// Provider instances
+final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  final authService = ref.read(authServiceProvider);
+  final authService = ref.watch(authServiceProvider);
   return AuthNotifier(authService);
 });
 
-// Current User Provider (convenience)
+// Computed providers
 final currentUserProvider = Provider<User?>((ref) {
-  return ref.watch(authProvider).user;
+  final authState = ref.watch(authProvider);
+  return authState.user;
 });
 
-// Is Authenticated Provider (convenience)
 final isAuthenticatedProvider = Provider<bool>((ref) {
-  return ref.watch(authProvider).isAuthenticated;
+  final authState = ref.watch(authProvider);
+  return authState.isAuthenticated;
 });
 
-// Auth Loading Provider (convenience)
 final authLoadingProvider = Provider<bool>((ref) {
-  return ref.watch(authProvider).isLoading;
+  final authState = ref.watch(authProvider);
+  return authState.isLoading;
 });
 
-// Auth Error Provider (convenience)
 final authErrorProvider = Provider<String?>((ref) {
-  return ref.watch(authProvider).error;
+  final authState = ref.watch(authProvider);
+  return authState.error;
 });

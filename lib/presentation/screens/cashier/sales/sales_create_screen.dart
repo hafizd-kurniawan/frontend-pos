@@ -2,19 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
-import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/constants/ui_constants.dart';
+import '../../../../core/widgets/custom_text_field.dart';
+import '../../../../core/widgets/custom_button.dart';
 import '../../../../data/models/vehicle_model.dart';
 import '../../../../data/models/customer_model.dart';
-import '../../../../data/models/sales_model.dart';
-import '../../../../presentation/providers/vehicle_provider.dart';
-import '../../../../presentation/providers/sales_provider.dart';
-import '../../../../core/widgets/custom_button.dart';
-import '../../../../core/widgets/custom_text_field.dart';
+import '../../../providers/sales_provider.dart';
+import '../../../providers/customer_provider.dart';
+import '../../../providers/vehicle_provider.dart';
 
 class SalesCreateScreen extends ConsumerStatefulWidget {
-  const SalesCreateScreen({super.key});
+  final Vehicle? preSelectedVehicle;
+
+  const SalesCreateScreen({super.key, this.preSelectedVehicle});
 
   @override
   ConsumerState<SalesCreateScreen> createState() => _SalesCreateScreenState();
@@ -24,74 +26,100 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
   final _formKey = GlobalKey<FormState>();
 
   // Controllers
-  final _saleCodeController = TextEditingController();
-  final _customerNameController = TextEditingController();
-  final _customerPhoneController = TextEditingController();
-  final _customerEmailController = TextEditingController();
-  final _customerAddressController = TextEditingController();
-  final _sellingPriceController = TextEditingController();
+  final _customerSearchController = TextEditingController();
+  final _vehicleSearchController = TextEditingController();
   final _downPaymentController = TextEditingController();
   final _notesController = TextEditingController();
 
-  // Selected values
+  // Selected data
   Vehicle? _selectedVehicle;
-  String _paymentMethod = 'cash';
-  String _saleStatus = 'pending';
-  DateTime _saleDate = DateTime.now();
+  Customer? _selectedCustomer;
+  String _selectedPaymentMethod = 'cash';
 
-  bool _isLoading = false;
-  bool _isCustomerNew = true;
+  // UI state
+  bool _showCustomerSearch = false;
+  bool _showVehicleSearch = false;
+  bool _showNewCustomerForm = false;
+  bool _isCreatingCustomer = false;
+
+  // New customer form controllers
+  final _newCustomerNameController = TextEditingController();
+  final _newCustomerPhoneController = TextEditingController();
+  final _newCustomerEmailController = TextEditingController();
+  final _newCustomerAddressController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _generateSaleCode();
-    // Load available vehicles
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(vehicleListProvider.notifier).loadVehicles();
-    });
-  }
 
-  void _generateSaleCode() {
-    final now = DateTime.now();
-    final code =
-        'SAL${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.millisecond.toString().padLeft(3, '0')}';
-    _saleCodeController.text = code;
+    if (widget.preSelectedVehicle != null) {
+      _selectedVehicle = widget.preSelectedVehicle;
+      _vehicleSearchController.text =
+          '${widget.preSelectedVehicle!.brand} ${widget.preSelectedVehicle!.model} ${widget.preSelectedVehicle!.year}';
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(customerProvider.notifier).loadCustomers();
+      if (_selectedVehicle == null) {
+        ref.read(vehicleListProvider.notifier).loadVehicles();
+      }
+    });
   }
 
   @override
   void dispose() {
-    _saleCodeController.dispose();
-    _customerNameController.dispose();
-    _customerPhoneController.dispose();
-    _customerEmailController.dispose();
-    _customerAddressController.dispose();
-    _sellingPriceController.dispose();
+    _customerSearchController.dispose();
+    _vehicleSearchController.dispose();
     _downPaymentController.dispose();
     _notesController.dispose();
+    _newCustomerNameController.dispose();
+    _newCustomerPhoneController.dispose();
+    _newCustomerEmailController.dispose();
+    _newCustomerAddressController.dispose();
     super.dispose();
   }
 
+  // ✅ RESPONSIVE HELPER METHODS
+  bool get isTablet => MediaQuery.of(context).size.width >= 768;
+  bool get isLargeTablet => MediaQuery.of(context).size.width >= 1024;
+
+  EdgeInsets get responsivePadding => EdgeInsets.all(isTablet ? 24.0 : 16.0);
+  double get responsiveSpacing => isTablet ? 20.0 : 16.0;
+  double get responsiveCardPadding => isTablet ? 20.0 : 16.0;
+
   @override
   Widget build(BuildContext context) {
+    // Listen to sales creation result
+    ref.listen<SalesState>(salesProvider, (previous, next) {
+      if (previous?.isCreating == true && next.isCreating == false) {
+        if (next.error != null) {
+          _showErrorSnackBar(next.error!);
+        } else {
+          _showSuccessSnackBar('🎉 Sale transaction completed successfully!');
+          Navigator.pop(context, true);
+        }
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _buildHeader(),
-          Expanded(child: _buildFormContent()),
-          _buildActionButtons(),
+          _buildResponsiveHeader(),
+          Expanded(child: _buildResponsiveFormContent()),
+          _buildResponsiveActionButtons(),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
+  // ✅ RESPONSIVE HEADER
+  Widget _buildResponsiveHeader() {
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: responsivePadding,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.sales, AppColors.sales.withOpacity(0.8)],
+          colors: [AppColors.sales, AppColors.sales.withOpacity(0.9)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -103,845 +131,407 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: Icon(
-              IconsaxPlusBold.arrow_left,
-              color: Colors.white,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '💰 Create New Sale',
-                  style: AppTextStyles.displaySmall.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 32,
-                  ),
-                ),
-                Text(
-                  'Complete a vehicle sale transaction',
-                  style: AppTextStyles.bodyLarge.copyWith(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 18,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  IconsaxPlusBold.receipt_item,
-                  color: Colors.white,
-                  size: 32,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Sale Transaction',
-                  style: AppTextStyles.labelMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFormContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: SafeArea(
+        child: Row(
           children: [
-            _buildSection('📋 Sale Information', [
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _saleCodeController,
-                      label: 'Sale Code',
-                      hint: 'SAL202501001',
-                      prefixIcon: IconsaxPlusBold.code,
-                      enabled: false,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _buildDateField(
-                      label: 'Sale Date',
-                      value: _saleDate,
-                      onChanged: (date) => setState(() => _saleDate = date),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildVehicleSelector(),
-            ]),
-
-            const SizedBox(height: 32),
-
-            _buildSection('👤 Customer Information', [
-              Row(
-                children: [
-                  Text(
-                    'Customer Type:',
-                    style: AppTextStyles.labelLarge.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Row(
-                    children: [
-                      Radio<bool>(
-                        value: true,
-                        groupValue: _isCustomerNew,
-                        onChanged: (value) =>
-                            setState(() => _isCustomerNew = value!),
-                      ),
-                      Text('New Customer'),
-                      const SizedBox(width: 16),
-                      Radio<bool>(
-                        value: false,
-                        groupValue: _isCustomerNew,
-                        onChanged: (value) =>
-                            setState(() => _isCustomerNew = value!),
-                      ),
-                      Text('Existing Customer'),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _customerNameController,
-                      label: 'Customer Name',
-                      hint: 'John Doe',
-                      prefixIcon: IconsaxPlusBold.user,
-                      validator: (value) => value?.isEmpty == true
-                          ? 'Customer name is required'
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _customerPhoneController,
-                      label: 'Phone Number',
-                      hint: '+62812345678',
-                      prefixIcon: IconsaxPlusBold.call,
-                      keyboardType: TextInputType.phone,
-                      validator: (value) => value?.isEmpty == true
-                          ? 'Phone number is required'
-                          : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _customerEmailController,
-                      label: 'Email (Optional)',
-                      hint: 'john@example.com',
-                      prefixIcon: IconsaxPlusBold.sms,
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _customerAddressController,
-                      label: 'Address',
-                      hint: 'Customer address...',
-                      prefixIcon: IconsaxPlusBold.location,
-                      validator: (value) =>
-                          value?.isEmpty == true ? 'Address is required' : null,
-                    ),
-                  ),
-                ],
-              ),
-            ]),
-
-            const SizedBox(height: 32),
-
-            _buildSection('💳 Payment Information', [
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _sellingPriceController,
-                      label: 'Selling Price',
-                      hint: '250000000',
-                      prefixIcon: IconsaxPlusBold.money_send,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      validator: (value) {
-                        if (value?.isEmpty == true)
-                          return 'Selling price is required';
-                        final price = double.tryParse(value!);
-                        if (price == null || price <= 0)
-                          return 'Enter valid price';
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _downPaymentController,
-                      label: 'Down Payment',
-                      hint: '50000000',
-                      prefixIcon: IconsaxPlusBold.money_recive,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      validator: (value) {
-                        if (value?.isEmpty == true)
-                          return 'Down payment is required';
-                        final downPayment = double.tryParse(value!);
-                        if (downPayment == null || downPayment < 0)
-                          return 'Enter valid down payment';
-
-                        final sellingPrice = double.tryParse(
-                          _sellingPriceController.text,
-                        );
-                        if (sellingPrice != null &&
-                            downPayment > sellingPrice) {
-                          return 'Down payment cannot exceed selling price';
-                        }
-
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDropdown(
-                      label: 'Payment Method',
-                      value: _paymentMethod,
-                      items: [
-                        {'value': 'cash', 'label': 'Cash'},
-                        {'value': 'financing', 'label': 'Financing'},
-                        {'value': 'installment', 'label': 'Installment'},
-                        {'value': 'trade_in', 'label': 'Trade In'},
-                      ],
-                      onChanged: (value) =>
-                          setState(() => _paymentMethod = value!),
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _buildDropdown(
-                      label: 'Sale Status',
-                      value: _saleStatus,
-                      items: [
-                        {'value': 'pending', 'label': 'Pending'},
-                        {'value': 'completed', 'label': 'Completed'},
-                        {'value': 'cancelled', 'label': 'Cancelled'},
-                      ],
-                      onChanged: (value) =>
-                          setState(() => _saleStatus = value!),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              if (_paymentMethod == 'cash' &&
-                  _sellingPriceController.text.isNotEmpty &&
-                  _downPaymentController.text.isNotEmpty)
-                _buildPaymentSummary(),
-            ]),
-
-            const SizedBox(height: 32),
-
-            _buildSection('📝 Additional Notes', [
-              _buildTextField(
-                controller: _notesController,
-                label: 'Notes (Optional)',
-                hint: 'Additional notes about the sale...',
-                prefixIcon: IconsaxPlusBold.document_text,
-                maxLines: 4,
-              ),
-            ]),
+            _buildBackButton(),
+            SizedBox(width: responsiveSpacing),
+            Expanded(child: _buildHeaderText()),
+            if (isTablet) _buildTransactionInfo(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildVehicleSelector() {
+  Widget _buildBackButton() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: IconButton(
+        onPressed: () => Navigator.pop(context),
+        icon: Icon(
+          IconsaxPlusBold.arrow_left,
+          color: Colors.white,
+          size: isTablet ? 28 : 24,
+        ),
+        padding: EdgeInsets.all(isTablet ? 16 : 12),
+      ),
+    );
+  }
+
+  Widget _buildHeaderText() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Select Vehicle',
-          style: AppTextStyles.labelLarge.copyWith(
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-            fontSize: 16,
+          '💰 Create Sale Transaction',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: isTablet ? 28 : 20,
           ),
         ),
-        const SizedBox(height: 12),
-        Consumer(
-          builder: (context, ref, child) {
-            final vehicleState = ref.watch(vehicleListProvider);
-
-            return vehicleState.when(
-              data: (vehicles) {
-                final availableVehicles = vehicles
-                    .where((v) => v.availabilityStatus == 'available')
-                    .toList();
-
-                if (availableVehicles.isEmpty) {
-                  return Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.warning.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          IconsaxPlusBold.warning_2,
-                          color: AppColors.warning,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'No available vehicles for sale',
-                          style: AppTextStyles.bodyMedium.copyWith(
-                            color: AppColors.warning,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.border),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(12),
-                            topRight: Radius.circular(12),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(IconsaxPlusBold.car, color: AppColors.primary),
-                            const SizedBox(width: 12),
-                            Text(
-                              _selectedVehicle != null
-                                  ? '${_selectedVehicle!.brand} ${_selectedVehicle!.model} (${_selectedVehicle!.year})'
-                                  : 'Select a vehicle to sell',
-                              style: AppTextStyles.titleMedium.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: _selectedVehicle != null
-                                    ? AppColors.primary
-                                    : AppColors.textSecondary,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (_selectedVehicle != null)
-                              Text(
-                                'Rp ${NumberFormat('#,###').format(_selectedVehicle!.sellingPrice)}',
-                                style: AppTextStyles.titleMedium.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.success,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        height: 200,
-                        child: ListView.builder(
-                          itemCount: availableVehicles.length,
-                          itemBuilder: (context, index) {
-                            final vehicle = availableVehicles[index];
-                            final isSelected =
-                                _selectedVehicle?.id == vehicle.id;
-
-                            return ListTile(
-                              selected: isSelected,
-                              selectedTileColor: AppColors.primary.withOpacity(
-                                0.1,
-                              ),
-                              leading: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  IconsaxPlusBold.car,
-                                  color: AppColors.primary,
-                                  size: 20,
-                                ),
-                              ),
-                              title: Text(
-                                '${vehicle.brand} ${vehicle.model}',
-                                style: AppTextStyles.titleMedium.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${vehicle.year} • ${vehicle.color} • ${vehicle.vehicleCode}',
-                                style: AppTextStyles.bodySmall,
-                              ),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    'Rp ${NumberFormat('#,###').format(vehicle.sellingPrice)}',
-                                    style: AppTextStyles.titleMedium.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.success,
-                                    ),
-                                  ),
-                                  Text(
-                                    vehicle.conditionStatus.toUpperCase(),
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                      color: _getConditionColor(
-                                        vehicle.conditionStatus,
-                                      ),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              onTap: () {
-                                setState(() {
-                                  _selectedVehicle = vehicle;
-                                  _sellingPriceController.text = vehicle
-                                      .sellingPrice
-                                      .toString();
-                                });
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              loading: () => Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Center(child: CircularProgressIndicator()),
-              ),
-              error: (error, stack) => Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(IconsaxPlusBold.warning_2, color: AppColors.error),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Failed to load vehicles: ${error.toString()}',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.error,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+        SizedBox(height: 4),
+        Text(
+          'Complete a vehicle sale to customer',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.9),
+            fontWeight: FontWeight.w500,
+            fontSize: isTablet ? 16 : 14,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildPaymentSummary() {
-    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0;
-    final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
-    final remaining = sellingPrice - downPayment;
-
+  Widget _buildTransactionInfo() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.success.withOpacity(0.1),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.success.withOpacity(0.3)),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(IconsaxPlusBold.receipt, size: 24, color: Colors.white),
+          SizedBox(height: 8),
           Text(
-            '💰 Payment Summary',
-            style: AppTextStyles.titleLarge.copyWith(
-              fontWeight: FontWeight.w700,
-              color: AppColors.success,
+            'Transaction',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Selling Price:', style: AppTextStyles.bodyMedium),
-              Text(
-                'Rp ${NumberFormat('#,###').format(sellingPrice)}',
-                style: AppTextStyles.titleMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Down Payment:', style: AppTextStyles.bodyMedium),
-              Text(
-                'Rp ${NumberFormat('#,###').format(downPayment)}',
-                style: AppTextStyles.titleMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.info,
-                ),
-              ),
-            ],
-          ),
-          const Divider(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Remaining:',
-                style: AppTextStyles.titleMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                'Rp ${NumberFormat('#,###').format(remaining)}',
-                style: AppTextStyles.titleLarge.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: remaining > 0 ? AppColors.warning : AppColors.success,
-                ),
-              ),
-            ],
+          Text(
+            DateTime.now().toString().substring(0, 10),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 12,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Color _getConditionColor(String condition) {
-    switch (condition.toLowerCase()) {
-      case 'excellent':
-        return AppColors.success;
-      case 'good':
-        return AppColors.info;
-      case 'fair':
-        return AppColors.warning;
-      case 'poor':
-        return AppColors.error;
-      default:
-        return AppColors.textTertiary;
-    }
-  }
-
-  Widget _buildSection(String title, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: AppTextStyles.headlineMedium.copyWith(
-            fontWeight: FontWeight.w700,
-            fontSize: 24,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 20),
-        ...children,
-      ],
+  // ✅ RESPONSIVE FORM CONTENT
+  Widget _buildResponsiveFormContent() {
+    return SingleChildScrollView(
+      padding: responsivePadding,
+      child: Form(
+        key: _formKey,
+        child: isLargeTablet
+            ? _buildTwoColumnLayout()
+            : _buildSingleColumnLayout(),
+      ),
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData prefixIcon,
-    String? Function(String?)? validator,
-    TextInputType keyboardType = TextInputType.text,
-    List<TextInputFormatter>? inputFormatters,
-    int maxLines = 1,
-    bool enabled = true,
-  }) {
-    return Column(
+  // ✅ TWO COLUMN LAYOUT FOR LARGE TABLETS
+  Widget _buildTwoColumnLayout() {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTextStyles.labelLarge.copyWith(
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-            fontSize: 16,
+        Expanded(
+          child: Column(
+            children: [
+              _buildVehicleSelectionSection(),
+              SizedBox(height: responsiveSpacing),
+              _buildPaymentDetailsSection(),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          validator: validator,
-          keyboardType: keyboardType,
-          inputFormatters: inputFormatters,
-          maxLines: maxLines,
-          enabled: enabled,
-          style: AppTextStyles.bodyLarge.copyWith(fontSize: 16),
-          decoration: InputDecoration(
-            hintText: hint,
-            prefixIcon: Icon(prefixIcon, color: AppColors.textTertiary),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primary, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.error, width: 2),
-            ),
-            filled: true,
-            fillColor: enabled ? Colors.white : AppColors.background,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
+        SizedBox(width: responsiveSpacing),
+        Expanded(
+          child: Column(
+            children: [
+              _buildCustomerSelectionSection(),
+              SizedBox(height: responsiveSpacing),
+              _buildTransactionSummary(),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildDropdown({
-    required String label,
-    required String value,
-    required List<Map<String, String>> items,
-    required void Function(String?) onChanged,
-  }) {
+  // ✅ SINGLE COLUMN LAYOUT FOR PHONES/TABLETS
+  Widget _buildSingleColumnLayout() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTextStyles.labelLarge.copyWith(
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-            fontSize: 16,
+        _buildVehicleSelectionSection(),
+        SizedBox(height: responsiveSpacing),
+        _buildCustomerSelectionSection(),
+        SizedBox(height: responsiveSpacing),
+        _buildPaymentDetailsSection(),
+        SizedBox(height: responsiveSpacing),
+        _buildTransactionSummary(),
+      ],
+    );
+  }
+
+  // ✅ RESPONSIVE FORM SECTIONS
+  Widget _buildFormSection({
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(responsiveCardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: isTablet ? 20 : 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: responsiveSpacing),
+            ...children,
+          ],
         ),
-        const SizedBox(height: 8),
-        Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+      ),
+    );
+  }
+
+  Widget _buildVehicleSelectionSection() {
+    return _buildFormSection(
+      title: '🚗 Vehicle Selection',
+      children: [
+        if (_selectedVehicle == null) ...[
+          CustomTextField(
+            controller: _vehicleSearchController,
+            label: 'Search Vehicle',
+            hint: 'Search by brand, model, year, or code...',
+            prefixIcon: IconsaxPlusBold.search_normal,
+            size: TextFieldSize.large,
+            onChanged: (value) {
+              if (value.length >= 2) {
+                setState(() => _showVehicleSearch = true);
+                Future.delayed(Duration(milliseconds: 300), () {
+                  if (_vehicleSearchController.text == value &&
+                      value.length >= 2) {
+                    ref.read(vehicleListProvider.notifier).searchVehicles();
+                  }
+                });
+              } else {
+                setState(() => _showVehicleSearch = false);
+              }
+            },
+          ),
+          if (_showVehicleSearch) ...[
+            SizedBox(height: responsiveSpacing),
+            _buildVehicleSearchResults(),
+          ],
+        ] else ...[
+          _buildSelectedVehicleCard(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildVehicleSearchResults() {
+    final vehicles = ref.watch(vehicleListProvider);
+    final searchQuery = _vehicleSearchController.text.toLowerCase();
+
+    return vehicles.when(
+      data: (vehicleList) {
+        final filteredVehicles = vehicleList.where((vehicle) {
+          final brand = vehicle.brand.toLowerCase();
+          final model = vehicle.model.toLowerCase();
+          final year = vehicle.year.toString();
+          final code = vehicle.vehicleCode.toLowerCase();
+          final color = vehicle.color.toLowerCase();
+
+          final matchesSearch =
+              brand.contains(searchQuery) ||
+              model.contains(searchQuery) ||
+              year.contains(searchQuery) ||
+              code.contains(searchQuery) ||
+              color.contains(searchQuery);
+
+          final isAvailable = vehicle.availabilityStatus == 'available';
+
+          return matchesSearch && isAvailable;
+        }).toList();
+
+        return Container(
+          constraints: BoxConstraints(maxHeight: isTablet ? 400 : 300),
           decoration: BoxDecoration(
             border: Border.all(color: AppColors.border),
             borderRadius: BorderRadius.circular(12),
             color: Colors.white,
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              isExpanded: true,
-              onChanged: onChanged,
-              style: AppTextStyles.bodyLarge.copyWith(
-                fontSize: 16,
-                color: AppColors.textPrimary,
-              ),
-              items: items.map((item) {
-                return DropdownMenuItem<String>(
-                  value: item['value'],
-                  child: Text(item['label']!),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-      ],
+          child: filteredVehicles.isEmpty
+              ? _buildEmptyState('No vehicles found', IconsaxPlusBold.car)
+              : ListView.builder(
+                  padding: EdgeInsets.all(8),
+                  itemCount: filteredVehicles.length,
+                  itemBuilder: (context, index) {
+                    return _buildVehicleSearchItem(filteredVehicles[index]);
+                  },
+                ),
+        );
+      },
+      loading: () => _buildLoadingState('Searching vehicles...'),
+      error: (error, stack) => _buildErrorState('Error loading vehicles'),
     );
   }
 
-  Widget _buildDateField({
-    required String label,
-    required DateTime value,
-    required void Function(DateTime) onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppTextStyles.labelLarge.copyWith(
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-            fontSize: 16,
+  Widget _buildVehicleSearchItem(Vehicle vehicle) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        contentPadding: EdgeInsets.all(12),
+        tileColor: Colors.grey.withOpacity(0.05),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: AppColors.border),
+        ),
+        leading: Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            IconsaxPlusBold.car,
+            color: AppColors.primary,
+            size: isTablet ? 24 : 20,
           ),
         ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: () async {
-            final selectedDate = await showDatePicker(
-              context: context,
-              initialDate: value,
-              firstDate: DateTime.now().subtract(const Duration(days: 30)),
-              lastDate: DateTime.now().add(const Duration(days: 30)),
-            );
-            if (selectedDate != null) {
-              onChanged(selectedDate);
-            }
-          },
-          child: Container(
-            height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.white,
+        title: Text(
+          '${vehicle.brand} ${vehicle.model} ${vehicle.year}',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Code: ${vehicle.vehicleCode} • ${vehicle.color}',
+              style: TextStyle(fontSize: isTablet ? 14 : 12),
             ),
-            child: Row(
+            Text(
+              'Price: Rp ${vehicle.sellingPrice.toStringAsFixed(0)}',
+              style: TextStyle(
+                color: AppColors.success,
+                fontWeight: FontWeight.w600,
+                fontSize: isTablet ? 14 : 12,
+              ),
+            ),
+          ],
+        ),
+        trailing: Icon(
+          IconsaxPlusBold.add_circle,
+          color: AppColors.primary,
+          size: isTablet ? 24 : 20,
+        ),
+        onTap: () {
+          setState(() {
+            _selectedVehicle = vehicle;
+            _vehicleSearchController.text =
+                '${vehicle.brand} ${vehicle.model} ${vehicle.year}';
+            _showVehicleSearch = false;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildSelectedVehicleCard() {
+    if (_selectedVehicle == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.all(responsiveCardPadding),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              IconsaxPlusBold.car,
+              color: AppColors.primary,
+              size: isTablet ? 28 : 24,
+            ),
+          ),
+          SizedBox(width: responsiveSpacing),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(IconsaxPlusBold.calendar, color: AppColors.textTertiary),
-                const SizedBox(width: 12),
                 Text(
-                  DateFormat('dd MMM yyyy').format(value),
-                  style: AppTextStyles.bodyLarge.copyWith(fontSize: 16),
+                  '${_selectedVehicle!.brand} ${_selectedVehicle!.model} ${_selectedVehicle!.year}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: isTablet ? 18 : 16,
+                  ),
                 ),
-                const Spacer(),
-                Icon(
-                  IconsaxPlusBold.arrow_down_1,
-                  color: AppColors.textTertiary,
-                  size: 16,
+                SizedBox(height: 4),
+                Text(
+                  'Code: ${_selectedVehicle!.vehicleCode}',
+                  style: TextStyle(fontSize: isTablet ? 14 : 12),
+                ),
+                Text(
+                  'Color: ${_selectedVehicle!.color}',
+                  style: TextStyle(fontSize: isTablet ? 14 : 12),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Rp ${_selectedVehicle!.sellingPrice.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w700,
+                    fontSize: isTablet ? 16 : 14,
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: _isLoading ? null : () => Navigator.pop(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                side: BorderSide(color: AppColors.border, width: 2),
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: Text(
-                'Cancel',
-                style: AppTextStyles.buttonLarge.copyWith(
-                  fontSize: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 20),
-
-          Expanded(
-            flex: 2,
-            child: ElevatedButton.icon(
-              onPressed: _isLoading || _selectedVehicle == null
-                  ? null
-                  : _createSale,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.sales,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: _isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Icon(IconsaxPlusBold.money_send, size: 24),
-              label: Text(
-                _isLoading ? 'Creating Sale...' : 'Create Sale',
-                style: AppTextStyles.buttonLarge.copyWith(
-                  fontSize: 18,
-                  color: Colors.white,
-                ),
-              ),
+          IconButton(
+            onPressed: () {
+              setState(() {
+                _selectedVehicle = null;
+                _vehicleSearchController.clear();
+              });
+            },
+            icon: Icon(
+              IconsaxPlusBold.close_circle,
+              color: AppColors.error,
+              size: isTablet ? 24 : 20,
             ),
           ),
         ],
@@ -949,70 +539,906 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     );
   }
 
-  Future<void> _createSale() async {
-    if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please fill all required fields correctly'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
+  Widget _buildCustomerSelectionSection() {
+    return _buildFormSection(
+      title: '👤 Customer Information',
+      children: [
+        if (_selectedCustomer == null) ...[
+          isTablet
+              ? Row(
+                  children: [
+                    Expanded(flex: 3, child: _buildCustomerSearchField()),
+                    SizedBox(width: responsiveSpacing),
+                    _buildNewCustomerButton(),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildCustomerSearchField(),
+                    SizedBox(height: responsiveSpacing),
+                    _buildNewCustomerButton(),
+                  ],
+                ),
+          if (_showCustomerSearch) ...[
+            SizedBox(height: responsiveSpacing),
+            _buildCustomerSearchResults(),
+          ],
+          if (_showNewCustomerForm) ...[
+            SizedBox(height: responsiveSpacing),
+            _buildNewCustomerForm(),
+          ],
+        ] else ...[
+          _buildSelectedCustomerCard(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCustomerSearchField() {
+    return CustomTextField(
+      controller: _customerSearchController,
+      label: 'Search Customer',
+      hint: 'Type name, phone, or email...',
+      prefixIcon: IconsaxPlusBold.search_normal,
+      size: TextFieldSize.large,
+      onChanged: (value) {
+        if (value.length >= 2) {
+          setState(() => _showCustomerSearch = true);
+          Future.delayed(Duration(milliseconds: 300), () {
+            if (_customerSearchController.text == value && value.length >= 2) {
+              ref.read(customerProvider.notifier).searchCustomers(value);
+            }
+          });
+        } else {
+          setState(() => _showCustomerSearch = false);
+        }
+      },
+    );
+  }
+
+  Widget _buildNewCustomerButton() {
+    return SizedBox(
+      width: isTablet ? 180 : double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: () =>
+            setState(() => _showNewCustomerForm = !_showNewCustomerForm),
+        icon: Icon(IconsaxPlusBold.user_add, size: 16),
+        label: Text('New Customer', style: TextStyle(fontSize: 14)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.success,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _buildCustomerSearchResults() {
+    final customerState = ref.watch(customerProvider);
+    final searchQuery = _customerSearchController.text.toLowerCase();
+
+    final filteredCustomers = customerState.customers.where((customer) {
+      final name = customer.fullName.toLowerCase();
+      final phone = customer.phone.toLowerCase();
+      final email = customer.email.toLowerCase();
+
+      return name.contains(searchQuery) ||
+          phone.contains(searchQuery) ||
+          email.contains(searchQuery);
+    }).toList();
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: isTablet ? 300 : 200),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      child: filteredCustomers.isEmpty
+          ? _buildEmptyState('No customers found', IconsaxPlusBold.user)
+          : ListView.builder(
+              padding: EdgeInsets.all(8),
+              itemCount: filteredCustomers.length,
+              itemBuilder: (context, index) {
+                return _buildCustomerSearchItem(filteredCustomers[index]);
+              },
+            ),
+    );
+  }
+
+  Widget _buildCustomerSearchItem(Customer customer) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        contentPadding: EdgeInsets.all(12),
+        tileColor: Colors.grey.withOpacity(0.05),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: AppColors.border),
+        ),
+        leading: Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.sales.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            IconsaxPlusBold.user,
+            color: AppColors.sales,
+            size: isTablet ? 20 : 18,
+          ),
+        ),
+        title: Text(
+          customer.fullName,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              customer.phone,
+              style: TextStyle(fontSize: isTablet ? 14 : 12),
+            ),
+            if (customer.email.isNotEmpty)
+              Text(
+                customer.email,
+                style: TextStyle(fontSize: isTablet ? 14 : 12),
+              ),
+          ],
+        ),
+        trailing: Icon(
+          IconsaxPlusBold.add_circle,
+          color: AppColors.sales,
+          size: isTablet ? 20 : 18,
+        ),
+        onTap: () {
+          setState(() {
+            _selectedCustomer = customer;
+            _customerSearchController.text = customer.fullName;
+            _showCustomerSearch = false;
+            _showNewCustomerForm = false;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildSelectedCustomerCard() {
+    if (_selectedCustomer == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.all(responsiveCardPadding),
+      decoration: BoxDecoration(
+        color: AppColors.sales.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.sales.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.sales.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              IconsaxPlusBold.user,
+              color: AppColors.sales,
+              size: isTablet ? 28 : 24,
+            ),
+          ),
+          SizedBox(width: responsiveSpacing),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _selectedCustomer!.fullName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: isTablet ? 18 : 16,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  _selectedCustomer!.phone,
+                  style: TextStyle(fontSize: isTablet ? 14 : 12),
+                ),
+                if (_selectedCustomer!.email.isNotEmpty)
+                  Text(
+                    _selectedCustomer!.email,
+                    style: TextStyle(fontSize: isTablet ? 14 : 12),
+                  ),
+                if (_selectedCustomer!.address.isNotEmpty)
+                  Text(
+                    _selectedCustomer!.address,
+                    style: TextStyle(
+                      fontSize: isTablet ? 14 : 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              setState(() {
+                _selectedCustomer = null;
+                _customerSearchController.clear();
+              });
+            },
+            icon: Icon(
+              IconsaxPlusBold.close_circle,
+              color: AppColors.error,
+              size: isTablet ? 24 : 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNewCustomerForm() {
+    return Container(
+      padding: EdgeInsets.all(responsiveCardPadding),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(IconsaxPlusBold.user_add, color: Colors.green, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Create New Customer',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.green,
+                  fontSize: isTablet ? 18 : 16,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: responsiveSpacing),
+          isTablet
+              ? Row(
+                  children: [
+                    Expanded(
+                      child: CustomTextField(
+                        controller: _newCustomerNameController,
+                        label: 'Full Name',
+                        hint: 'Enter customer full name',
+                        prefixIcon: IconsaxPlusBold.user,
+                        required: true,
+                        size: TextFieldSize.medium,
+                      ),
+                    ),
+                    SizedBox(width: responsiveSpacing),
+                    Expanded(
+                      child: CustomTextField(
+                        controller: _newCustomerPhoneController,
+                        label: 'Phone Number',
+                        hint: '+62812345678',
+                        prefixIcon: IconsaxPlusBold.call,
+                        required: true,
+                        size: TextFieldSize.medium,
+                        keyboardType: TextInputType.phone,
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  children: [
+                    CustomTextField(
+                      controller: _newCustomerNameController,
+                      label: 'Full Name',
+                      hint: 'Enter customer full name',
+                      prefixIcon: IconsaxPlusBold.user,
+                      required: true,
+                      size: TextFieldSize.medium,
+                    ),
+                    SizedBox(height: responsiveSpacing),
+                    CustomTextField(
+                      controller: _newCustomerPhoneController,
+                      label: 'Phone Number',
+                      hint: '+62812345678',
+                      prefixIcon: IconsaxPlusBold.call,
+                      required: true,
+                      size: TextFieldSize.medium,
+                      keyboardType: TextInputType.phone,
+                    ),
+                  ],
+                ),
+          SizedBox(height: responsiveSpacing),
+          CustomTextField(
+            controller: _newCustomerEmailController,
+            label: 'Email Address',
+            hint: 'customer@email.com',
+            prefixIcon: IconsaxPlusBold.sms,
+            size: TextFieldSize.medium,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          SizedBox(height: responsiveSpacing),
+          CustomTextField(
+            controller: _newCustomerAddressController,
+            label: 'Address',
+            hint: 'Enter complete address',
+            prefixIcon: IconsaxPlusBold.location,
+            required: true,
+            size: TextFieldSize.medium,
+            maxLines: 2,
+          ),
+          SizedBox(height: responsiveSpacing),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => setState(() => _showNewCustomerForm = false),
+                  icon: Icon(IconsaxPlusBold.close_circle, size: 16),
+                  label: Text('Cancel', style: TextStyle(fontSize: 14)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isCreatingCustomer ? null : _createNewCustomer,
+                  icon: _isCreatingCustomer
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(IconsaxPlusBold.user_add, size: 16),
+                  label: Text(
+                    _isCreatingCustomer ? 'Creating...' : 'Create',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentDetailsSection() {
+    return _buildFormSection(
+      title: '💳 Payment Details',
+      children: [
+        isTablet
+            ? Row(
+                children: [
+                  Expanded(child: _buildPaymentMethodDropdown()),
+                  SizedBox(width: responsiveSpacing),
+                  Expanded(child: _buildDownPaymentField()),
+                ],
+              )
+            : Column(
+                children: [
+                  _buildPaymentMethodDropdown(),
+                  SizedBox(height: responsiveSpacing),
+                  _buildDownPaymentField(),
+                ],
+              ),
+        SizedBox(height: responsiveSpacing),
+        CustomTextField(
+          controller: _notesController,
+          label: 'Transaction Notes',
+          hint: 'Add any additional notes for this transaction...',
+          prefixIcon: IconsaxPlusBold.note,
+          size: TextFieldSize.medium,
+          maxLines: 3,
+          helperText:
+              'Optional notes about payment, delivery, or special conditions',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Payment Method',
+          style: TextStyle(
+            fontSize: isTablet ? 16 : 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        SizedBox(height: 8),
+        Container(
+          height: 48,
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border, width: 1.5),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                IconsaxPlusBold.card,
+                color: AppColors.textTertiary,
+                size: 20,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedPaymentMethod,
+                    isExpanded: true,
+                    onChanged: (value) =>
+                        setState(() => _selectedPaymentMethod = value!),
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: isTablet ? 16 : 14,
+                    ),
+                    icon: Icon(
+                      IconsaxPlusBold.arrow_down_1,
+                      color: AppColors.textTertiary,
+                      size: 16,
+                    ),
+                    items:
+                        [
+                          {'value': 'cash', 'label': 'Cash Payment'},
+                          {'value': 'transfer', 'label': 'Bank Transfer'},
+                          {'value': 'check', 'label': 'Check Payment'},
+                          {'value': 'credit', 'label': 'Credit/Financing'},
+                        ].map((item) {
+                          return DropdownMenuItem<String>(
+                            value: item['value'],
+                            child: Text(item['label']!),
+                          );
+                        }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDownPaymentField() {
+    return CustomTextField(
+      controller: _downPaymentController,
+      label: 'Down Payment (Rp)',
+      hint: 'Enter down payment amount',
+      prefixIcon: IconsaxPlusBold.money_recive,
+      required: true,
+      size: TextFieldSize.large,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      validator: _validateDownPayment,
+      helperText: 'Minimum 10% of vehicle price',
+    );
+  }
+
+  Widget _buildTransactionSummary() {
+    if (_selectedVehicle == null) return const SizedBox.shrink();
+
+    final vehiclePrice = _selectedVehicle!.sellingPrice;
+    final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
+    final remainingAmount = vehiclePrice - downPayment;
+
+    return _buildFormSection(
+      title: '📋 Transaction Summary',
+      children: [
+        Container(
+          padding: EdgeInsets.all(responsiveCardPadding),
+          decoration: BoxDecoration(
+            color: AppColors.success.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.success.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              _buildSummaryRow(
+                'Vehicle Price:',
+                'Rp ${vehiclePrice.toStringAsFixed(0)}',
+              ),
+              SizedBox(height: 12),
+              _buildSummaryRow(
+                'Down Payment:',
+                'Rp ${downPayment.toStringAsFixed(0)}',
+              ),
+              SizedBox(height: 12),
+              Divider(color: AppColors.success.withOpacity(0.3)),
+              SizedBox(height: 12),
+              _buildSummaryRow(
+                'Remaining Amount:',
+                'Rp ${remainingAmount.toStringAsFixed(0)}',
+                isTotal: true,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, {bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: isTotal ? AppColors.success : AppColors.textPrimary,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ RESPONSIVE ACTION BUTTONS
+  Widget _buildResponsiveActionButtons() {
+    final salesState = ref.watch(salesListProvider);
+    final canCreateSale =
+        _selectedVehicle != null &&
+        _selectedCustomer != null &&
+        _downPaymentController.text.isNotEmpty;
+
+    return Container(
+      padding: responsivePadding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: buildSecondaryButton(
+                text: 'Cancel',
+                onPressed: salesState.isCreating
+                    ? null
+                    : () => Navigator.pop(context),
+                icon: IconsaxPlusBold.arrow_left,
+                size: ButtonSize.large,
+                isFullWidth: true,
+              ),
+            ),
+            SizedBox(width: responsiveSpacing),
+            Expanded(
+              flex: 2,
+              child: buildPrimaryButton(
+                text: salesState.isCreating
+                    ? 'Creating Sale...'
+                    : 'Complete Sale',
+                onPressed: canCreateSale && !salesState.isCreating
+                    ? _completeSale
+                    : null,
+                icon: IconsaxPlusBold.tick_circle,
+                size: ButtonSize.large,
+                isLoading: salesState.isCreating,
+                isFullWidth: true,
+                backgroundColor: AppColors.success,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ HELPER WIDGETS
+  Widget _buildEmptyState(String message, IconData icon) {
+    return Container(
+      padding: EdgeInsets.all(responsiveCardPadding),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: isTablet ? 48 : 32, color: Colors.grey),
+            SizedBox(height: 8),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: isTablet ? 16 : 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(String message) {
+    return Container(
+      height: 100,
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 8),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: isTablet ? 16 : 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String message) {
+    return Container(
+      height: 100,
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.error),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.red.withOpacity(0.1),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(IconsaxPlusBold.warning_2, color: AppColors.error),
+            SizedBox(height: 8),
+            Text(
+              message,
+              style: TextStyle(
+                color: AppColors.error,
+                fontSize: isTablet ? 16 : 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ FIXED CREATE CUSTOMER WITH BETTER ERROR HANDLING
+  Future<void> _createNewCustomer() async {
+    print('🚀 Create Customer button clicked!');
+
+    if (_newCustomerNameController.text.trim().isEmpty ||
+        _newCustomerPhoneController.text.trim().isEmpty ||
+        _newCustomerAddressController.text.trim().isEmpty) {
+      print('❌ Validation failed');
+      _showErrorSnackBar('Please fill all required customer fields');
+      return;
+    }
+
+    print('✅ Validation passed, creating customer...');
+
+    setState(() {
+      _isCreatingCustomer = true;
+    });
+
+    try {
+      print('📤 Sending POST request to create customer...');
+
+      final success = await ref
+          .read(customerProvider.notifier)
+          .createCustomer(
+            name: _newCustomerNameController.text.trim(),
+            phone: _newCustomerPhoneController.text.trim(),
+            email: _newCustomerEmailController.text.trim(),
+            address: _newCustomerAddressController.text.trim(),
+            companyName: null,
+          );
+
+      if (success) {
+        print('✅ Customer created successfully via POST API');
+
+        await Future.delayed(Duration(milliseconds: 1000));
+        await ref.read(customerProvider.notifier).loadCustomers();
+
+        final customerState = ref.read(customerProvider);
+        final newCustomer = customerState.customers.firstWhere(
+          (c) =>
+              c.fullName == _newCustomerNameController.text.trim() &&
+              c.phone == _newCustomerPhoneController.text.trim(),
+          orElse: () => Customer(
+            id: DateTime.now().millisecondsSinceEpoch,
+            fullName: _newCustomerNameController.text.trim(),
+            name: _newCustomerNameController.text.trim(),
+            phone: _newCustomerPhoneController.text.trim(),
+            email: _newCustomerEmailController.text.trim(),
+            address: _newCustomerAddressController.text.trim(),
+            companyName: null,
+            createdAt: DateTime.now().toIso8601String(),
+            updatedAt: DateTime.now().toIso8601String(),
+          ),
+        );
+
+        setState(() {
+          _selectedCustomer = newCustomer;
+          _customerSearchController.text = newCustomer.fullName;
+          _showNewCustomerForm = false;
+          _showCustomerSearch = false;
+          _isCreatingCustomer = false;
+        });
+
+        // Clear form
+        _newCustomerNameController.clear();
+        _newCustomerPhoneController.clear();
+        _newCustomerEmailController.clear();
+        _newCustomerAddressController.clear();
+
+        print('✅ Customer selected and form cleared');
+        _showSuccessSnackBar(
+          '✅ Customer "${newCustomer.fullName}" created and saved to database!',
+        );
+      } else {
+        print('❌ Failed to create customer via POST API');
+        setState(() {
+          _isCreatingCustomer = false;
+        });
+        _showErrorSnackBar(
+          '❌ Failed to create customer. Please check your input and try again.',
+        );
+      }
+    } catch (e) {
+      print('❌ Error creating customer: $e');
+
+      setState(() {
+        _isCreatingCustomer = false;
+      });
+
+      if (e.toString().contains('Authentication failed')) {
+        _showErrorSnackBar('❌ Session expired. Please login again.');
+      } else {
+        _showErrorSnackBar('❌ Error creating customer: $e');
+      }
+    }
+  }
+
+  Future<void> _completeSale() async {
+    if (!_formKey.currentState!.validate()) {
+      _showErrorSnackBar('Please fill all required fields correctly');
       return;
     }
 
     if (_selectedVehicle == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please select a vehicle to sell'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showErrorSnackBar('Please select a vehicle');
       return;
     }
 
-    setState(() => _isLoading = true);
+    if (_selectedCustomer == null) {
+      _showErrorSnackBar('Please select or create a customer');
+      return;
+    }
 
-    try {
-      // Here you would create the sale via API
-      // For now, just show success message
+    final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
+    final vehiclePrice = _selectedVehicle!.sellingPrice;
 
-      await Future.delayed(const Duration(seconds: 2)); // Simulate API call
+    print('🚀 Creating sale transaction...');
+    print('Vehicle ID: ${_selectedVehicle!.id}');
+    print('Customer ID: ${_selectedCustomer!.id}');
+    print('Total Amount: $vehiclePrice');
+    print('Down Payment: $downPayment');
+    print('Payment Method: $_selectedPaymentMethod');
 
-      // Update vehicle status to sold
-      final updatedVehicle = _selectedVehicle!.copyWith(
-        availabilityStatus: 'sold',
-      );
-
-      await ref
-          .read(vehicleListProvider.notifier)
-          .updateVehicle(updatedVehicle);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sale created successfully! Vehicle marked as sold.'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
+    await ref
+        .read(salesProvider.notifier)
+        .createSale(
+          vehicleId: _selectedVehicle!.id,
+          customerId: _selectedCustomer!.id,
+          totalAmount: vehiclePrice,
+          downPayment: downPayment,
+          paymentMethod: _selectedPaymentMethod,
+          notes: _notesController.text,
         );
-        Navigator.pop(context, true);
+  }
+
+  String? _validateDownPayment(String? value) {
+    if (value?.isEmpty == true) return 'Down payment is required';
+
+    final downPayment = double.tryParse(value!);
+    if (downPayment == null || downPayment <= 0) {
+      return 'Please enter a valid amount';
+    }
+
+    if (_selectedVehicle != null) {
+      final vehiclePrice = _selectedVehicle!.sellingPrice;
+      final minDownPayment = vehiclePrice * 0.1; // 10% minimum
+
+      if (downPayment < minDownPayment) {
+        return 'Minimum down payment is Rp ${minDownPayment.toStringAsFixed(0)}';
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to create sale: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+
+      if (downPayment > vehiclePrice) {
+        return 'Down payment cannot exceed vehicle price';
       }
     }
+
+    return null;
+  }
+
+  void _showSuccessSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(IconsaxPlusBold.tick_circle, color: Colors.white),
+            SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(IconsaxPlusBold.warning_2, color: Colors.white),
+            SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 }

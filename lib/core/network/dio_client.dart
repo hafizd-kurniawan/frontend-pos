@@ -2,174 +2,136 @@ import 'package:dio/dio.dart';
 import '../constants/api_constants.dart';
 
 class DioClient {
-  static final DioClient _instance = DioClient._internal();
-  static DioClient get instance => _instance;
+  static late Dio _dio;
+  static String? _authToken;
 
-  late Dio _dio;
-  String? _authToken;
+  static Dio get instance => _dio;
 
-  DioClient._internal() {
-    _dio = Dio();
-    _initializeInterceptors();
-  }
-
-  // Method to set auth token
-  void setAuthToken(String? token) {
-    _authToken = token;
-    print('🎫 DioClient: Auth token ${token != null ? 'set' : 'cleared'}');
-  }
-
-  void _initializeInterceptors() {
-    _dio.options = BaseOptions(
-      baseUrl: ApiConstants.fullBaseUrl,
-      connectTimeout: ApiConstants.connectTimeout,
-      receiveTimeout: ApiConstants.receiveTimeout,
-      sendTimeout: ApiConstants.sendTimeout,
-      headers: ApiConstants.defaultHeaders,
+  static void init() {
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: ApiConstants.fullBaseUrl,
+        connectTimeout: ApiConstants.connectTimeout,
+        receiveTimeout: ApiConstants.receiveTimeout,
+        sendTimeout: ApiConstants.sendTimeout,
+        headers: ApiConstants.defaultHeaders,
+      ),
     );
 
-    // Add auth token interceptor
+    // Add interceptor for authentication
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          // Add auth token to requests if available
-          if (_authToken != null && !options.path.contains('/auth/login')) {
+          if (_authToken != null) {
             options.headers['Authorization'] = 'Bearer $_authToken';
-            print('🎫 Added auth token to request: ${options.path}');
           }
-
-          print(
-            '🚀 API Request: ${options.method} ${ApiConstants.fullBaseUrl}${options.path}',
-          );
+          print('🌐 ${options.method} ${options.path}');
+          print('📦 Headers: ${options.headers}');
           if (options.data != null) {
-            print('📤 Request Body: ${options.data}');
-          }
-          if (options.queryParameters.isNotEmpty) {
-            print('📋 Query Parameters: ${options.queryParameters}');
+            print('📤 Data: ${options.data}');
           }
           handler.next(options);
         },
         onResponse: (response, handler) {
           print(
-            '✅ API Response: ${response.statusCode} ${response.statusMessage}',
+            '✅ Response ${response.statusCode}: ${response.requestOptions.path}',
           );
-          print('📥 Response Data Type: ${response.data.runtimeType}');
           handler.next(response);
         },
         onError: (error, handler) {
-          print('❌ API Error: ${error.message}');
-          print('📄 Error Response: ${error.response?.data}');
-          print('📊 Status Code: ${error.response?.statusCode}');
-          print('🔗 Request URL: ${error.requestOptions.uri}');
+          print(
+            '❌ Error ${error.response?.statusCode}: ${error.requestOptions.path}',
+          );
+          print('📄 Error Data: ${error.response?.data}');
 
-          // Handle 401 unauthorized - clear token
           if (error.response?.statusCode == 401) {
             _authToken = null;
-            print('🔓 Cleared auth token due to 401 response');
           }
 
           handler.next(error);
         },
       ),
     );
+  }
 
-    // Add logging interceptor
-    _dio.interceptors.add(
-      LogInterceptor(
-        request: true,
-        requestHeader: true,
-        requestBody: true,
-        responseHeader: false, // Reduce noise
-        responseBody: true,
-        error: true,
-        logPrint: (object) {
-          print('🌐 API LOG: $object');
-        },
-      ),
+  static void setAuthToken(String token) {
+    _authToken = token;
+    print('🔐 Auth token set');
+  }
+
+  static void clearAuthToken() {
+    _authToken = null;
+    print('🔓 Auth token cleared');
+  }
+
+  static bool get hasAuthToken => _authToken != null;
+
+  // ✅ GUNAKAN INSTANCE METHODS (bukan static)
+  static Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    return await _dio.get<T>(
+      path,
+      queryParameters: queryParameters,
+      options: options,
     );
   }
 
-  Dio get dio => _dio;
-
-  // GET request
-  Future<Response> get(
+  static Future<Response<T>> post<T>(
     String path, {
+    Object? data,
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    try {
-      final response = await _dio.get(
-        path,
-        queryParameters: queryParameters,
-        options: options,
-      );
-      return response;
-    } catch (e) {
-      print('❌ GET Error for $path: $e');
-      rethrow;
-    }
+    return await _dio.post<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
   }
 
-  // POST request
-  Future<Response> post(
+  static Future<Response<T>> put<T>(
     String path, {
-    dynamic data,
+    Object? data,
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    try {
-      final response = await _dio.post(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
-      );
-      return response;
-    } catch (e) {
-      print('❌ POST Error for $path: $e');
-      rethrow;
-    }
+    return await _dio.put<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
   }
 
-  // PUT request
-  Future<Response> put(
+  static Future<Response<T>> patch<T>(
     String path, {
-    dynamic data,
+    Object? data,
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    try {
-      final response = await _dio.put(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
-      );
-      return response;
-    } catch (e) {
-      print('❌ PUT Error for $path: $e');
-      rethrow;
-    }
+    return await _dio.patch<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
   }
 
-  // DELETE request
-  Future<Response> delete(
+  static Future<Response<T>> delete<T>(
     String path, {
-    dynamic data,
+    Object? data,
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    try {
-      final response = await _dio.delete(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
-      );
-      return response;
-    } catch (e) {
-      print('❌ DELETE Error for $path: $e');
-      rethrow;
-    }
+    return await _dio.delete<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
   }
 }

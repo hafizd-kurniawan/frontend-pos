@@ -8,6 +8,7 @@ class AppTheme {
 
   static ThemeData get lightTheme {
     return ThemeData(
+      fontFamily: null,
       useMaterial3: true,
       brightness: Brightness.light,
       primaryColor: AppColors.primary,

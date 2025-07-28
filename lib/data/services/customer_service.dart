@@ -1,284 +1,122 @@
-import 'package:dio/dio.dart';
-import '../../core/network/dio_client.dart';
-import '../../core/constants/api_constants.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../models/customer_model.dart';
+import '../../core/constants/api_constants.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'auth_service.dart';
 
 class CustomerService {
-  Future<Customer> createCustomer({required Customer customerData}) async {
+  static const String baseUrl = ApiConstants.fullBaseUrl;
+
+  Future<String?> _getValidToken() async {
     try {
-      print('👤 Creating new customer');
-      print('📋 Customer data: ${customerData.toJson()}');
+      final token = await AuthService.getToken();
 
-      final response = await DioClient.instance.post(
-        ApiConstants.customers,
-        data: customerData.toJson(),
-      );
-
-      print('✅ Customer Response Status: ${response.statusCode}');
-      print('📦 Customer Response Data: ${response.data}');
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        final responseData = response.data as Map<String, dynamic>;
-
-        // Check if wrapped in success structure
-        if (responseData.containsKey('success') &&
-            responseData['success'] == true &&
-            responseData.containsKey('data')) {
-          final customerResponseData =
-              responseData['data'] as Map<String, dynamic>;
-          return Customer.fromJson(customerResponseData);
-        } else {
-          // Direct response
-          return Customer.fromJson(responseData);
-        }
-      } else {
-        throw Exception('Failed to create customer');
+      if (token == null) {
+        print('❌ No valid token available');
+        throw Exception('Authentication required. Please login again.');
       }
-    } on DioException catch (e) {
-      print('❌ Create Customer Dio Exception: ${e.message}');
-      print('📄 Response: ${e.response?.data}');
-      print('📊 Status: ${e.response?.statusCode}');
 
-      if (e.response?.statusCode == 400) {
-        final errorData = e.response?.data as Map<String, dynamic>?;
-        final errorMessage = errorData?['message'] ?? 'Invalid customer data';
-        throw Exception(errorMessage);
-      } else if (e.response?.statusCode == 409) {
-        throw Exception('Customer with this phone number already exists');
-      } else {
-        throw Exception('Failed to create customer: ${e.message}');
-      }
+      print('📦 Token: ${token.substring(0, 10)}...');
+      return token;
     } catch (e) {
-      print('❌ Create Customer General Exception: $e');
-      throw Exception('Failed to create customer: ${e.toString()}');
+      print('❌ Error getting valid token: $e');
+      throw Exception('Authentication failed. Please login again.');
     }
   }
 
-  Future<List<Customer>> getCustomers({
-    int page = 1,
-    int limit = 20,
-    String? search,
-    String? sortBy = 'created_at',
-    String? sortOrder = 'desc',
+  Future<List<Customer>> getAllCustomers() async {
+    print('🔍 Fetching customers...');
+    print('🌐 GET /customers');
+
+    final token = await _getValidToken(); // ✅ hindari pemanggilan berulang
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/customers'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    print('📦 Headers: ${response.request?.headers}');
+    print('✅ Response ${response.statusCode}: /customers');
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      print('✅ Customer response: $data');
+
+      final List<dynamic> customerData = data['data'];
+      return customerData.map((json) => Customer.fromJson(json)).toList();
+    } else {
+      print('❌ Error ${response.statusCode}: ${response.body}');
+      throw Exception('Failed to load customers');
+    }
+  }
+
+  Future<Customer> createCustomer({
+    required String fullName,
+    required String phone,
+    required String email,
+    required String address,
+    String? companyName,
   }) async {
-    try {
-      print('👥 Fetching customers list');
+    print('🚀 Creating customer...');
+    print('🌐 POST /customers');
 
-      final queryParams = <String, dynamic>{
-        'page': page,
-        'limit': limit,
-        if (search != null && search.isNotEmpty) 'search': search,
-        'sort_by': sortBy,
-        'sort_order': sortOrder,
-      };
+    final requestData = {
+      'full_name': fullName,
+      'phone': phone,
+      'email': email,
+      'address': address,
+      'customer_type': 'individual',
+      'city': 'Jakarta',
+      'is_active': true,
+      if (companyName != null) 'company_name': companyName,
+    };
+    final token = await _getValidToken(); // ✅ hindari dipanggil dua kali
+    final response = await http.post(
+      Uri.parse('$baseUrl/customers'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(requestData),
+    );
 
-      final response = await DioClient.instance.get(
-        ApiConstants.customers,
-        queryParameters: queryParams,
-      );
+    print('📦 Request headers: ${response.request?.headers}');
+    print('✅ Response ${response.statusCode}: POST /customers');
+    print('📄 Response body: ${response.body}');
 
-      print('✅ Customers List Response Status: ${response.statusCode}');
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = json.decode(response.body);
+      print('✅ Customer created successfully: $data');
 
-      if (response.statusCode == 200) {
-        final responseData = response.data as Map<String, dynamic>;
-
-        // Check if wrapped in success structure
-        if (responseData.containsKey('success') &&
-            responseData['success'] == true &&
-            responseData.containsKey('data')) {
-          final customersData = responseData['data'] as List;
-          return customersData
-              .map(
-                (customer) =>
-                    Customer.fromJson(customer as Map<String, dynamic>),
-              )
-              .toList();
-        } else if (responseData.containsKey('data') &&
-            responseData['data'] is List) {
-          // Data is directly in 'data' field
-          final customersData = responseData['data'] as List;
-          return customersData
-              .map(
-                (customer) =>
-                    Customer.fromJson(customer as Map<String, dynamic>),
-              )
-              .toList();
-        } else if (responseData is List) {
-          // Direct list response
-          return responseData
-              .map(
-                (customer) =>
-                    Customer.fromJson(customer as Map<String, dynamic>),
-              )
-              .toList();
-        } else {
-          return [];
-        }
+      if (data['data'] != null) {
+        return Customer.fromJson(data['data']);
       } else {
-        throw Exception('Failed to fetch customers');
+        return Customer(
+          id: DateTime.now().millisecondsSinceEpoch,
+          fullName: fullName,
+          name: fullName,
+          phone: phone,
+          email: email,
+          address: address,
+          companyName: companyName,
+          createdAt: DateTime.now().toIso8601String(),
+          updatedAt: DateTime.now().toIso8601String(),
+        );
       }
-    } on DioException catch (e) {
-      print('❌ Get Customers Error: ${e.message}');
-      throw Exception('Failed to fetch customers: ${e.message}');
-    } catch (e) {
-      print('❌ Get Customers General Exception: $e');
-      throw Exception('Failed to fetch customers: ${e.toString()}');
+    } else {
+      print('❌ Error ${response.statusCode}: ${response.body}');
+      throw Exception('Failed to create customer: ${response.body}');
     }
   }
 
-  Future<Customer> getCustomerById(int customerId) async {
-    try {
-      print('👤 Fetching customer details for ID: $customerId');
-
-      final response = await DioClient.instance.get(
-        '${ApiConstants.customers}/$customerId',
-      );
-
-      print('✅ Customer Detail Response Status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final responseData = response.data as Map<String, dynamic>;
-
-        // Check if wrapped in success structure
-        if (responseData.containsKey('success') &&
-            responseData['success'] == true &&
-            responseData.containsKey('data')) {
-          final customerData = responseData['data'] as Map<String, dynamic>;
-          return Customer.fromJson(customerData);
-        } else {
-          // Direct response
-          return Customer.fromJson(responseData);
-        }
-      } else {
-        throw Exception('Customer not found');
-      }
-    } on DioException catch (e) {
-      print('❌ Get Customer Detail Error: ${e.message}');
-      if (e.response?.statusCode == 404) {
-        throw Exception('Customer not found');
-      }
-      throw Exception('Failed to fetch customer details: ${e.message}');
-    } catch (e) {
-      print('❌ Get Customer Detail General Exception: $e');
-      throw Exception('Failed to fetch customer details: ${e.toString()}');
-    }
-  }
-
-  Future<Customer> updateCustomer({required Customer customerData}) async {
-    try {
-      print('🔄 Updating customer: ${customerData.id}');
-
-      final response = await DioClient.instance.put(
-        '${ApiConstants.customers}/${customerData.id}',
-        data: customerData.toJson(),
-      );
-
-      print('✅ Update Customer Response Status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final responseData = response.data as Map<String, dynamic>;
-
-        // Check if wrapped in success structure
-        if (responseData.containsKey('success') &&
-            responseData['success'] == true &&
-            responseData.containsKey('data')) {
-          final customerResponseData =
-              responseData['data'] as Map<String, dynamic>;
-          return Customer.fromJson(customerResponseData);
-        } else {
-          // Direct response
-          return Customer.fromJson(responseData);
-        }
-      } else {
-        throw Exception('Failed to update customer');
-      }
-    } on DioException catch (e) {
-      print('❌ Update Customer Error: ${e.message}');
-      throw Exception('Failed to update customer: ${e.message}');
-    } catch (e) {
-      print('❌ Update Customer General Exception: $e');
-      throw Exception('Failed to update customer: ${e.toString()}');
-    }
-  }
-
-  Future<void> deleteCustomer(int customerId) async {
-    try {
-      print('🗑️ Deleting customer: $customerId');
-
-      final response = await DioClient.instance.delete(
-        '${ApiConstants.customers}/$customerId',
-      );
-
-      print('✅ Delete Customer Response Status: ${response.statusCode}');
-
-      if (response.statusCode != 200 && response.statusCode != 204) {
-        throw Exception('Failed to delete customer');
-      }
-    } on DioException catch (e) {
-      print('❌ Delete Customer Error: ${e.message}');
-      throw Exception('Failed to delete customer: ${e.message}');
-    } catch (e) {
-      print('❌ Delete Customer General Exception: $e');
-      throw Exception('Failed to delete customer: ${e.toString()}');
-    }
-  }
-
-  Future<List<Customer>> searchCustomers({
-    required String query,
-    int limit = 10,
-  }) async {
-    try {
-      print('🔍 Searching customers: $query');
-
-      final response = await DioClient.instance.get(
-        '${ApiConstants.customers}/search',
-        queryParameters: {'q': query, 'limit': limit},
-      );
-
-      print('✅ Search Customers Response Status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final responseData = response.data as Map<String, dynamic>;
-
-        // Check if wrapped in success structure
-        if (responseData.containsKey('success') &&
-            responseData['success'] == true &&
-            responseData.containsKey('data')) {
-          final customersData = responseData['data'] as List;
-          return customersData
-              .map(
-                (customer) =>
-                    Customer.fromJson(customer as Map<String, dynamic>),
-              )
-              .toList();
-        } else if (responseData.containsKey('data') &&
-            responseData['data'] is List) {
-          final customersData = responseData['data'] as List;
-          return customersData
-              .map(
-                (customer) =>
-                    Customer.fromJson(customer as Map<String, dynamic>),
-              )
-              .toList();
-        } else if (responseData is List) {
-          return responseData
-              .map(
-                (customer) =>
-                    Customer.fromJson(customer as Map<String, dynamic>),
-              )
-              .toList();
-        } else {
-          return [];
-        }
-      } else {
-        throw Exception('Failed to search customers');
-      }
-    } on DioException catch (e) {
-      print('❌ Search Customers Error: ${e.message}');
-      throw Exception('Failed to search customers: ${e.message}');
-    } catch (e) {
-      print('❌ Search Customers General Exception: $e');
-      throw Exception('Failed to search customers: ${e.toString()}');
-    }
+  Future<List<Customer>> searchCustomers() async {
+    // For now, return all customers (you can add search parameter later)
+    return await getAllCustomers();
   }
 }

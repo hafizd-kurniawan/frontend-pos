@@ -7,6 +7,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../data/models/user_model.dart';
 import '../../../../presentation/providers/auth_provider.dart';
 import '../vehicles/vehicle_list_screen.dart';
+import '../sales/sales_create_screen.dart';
 
 class CashierDashboardScreen extends ConsumerWidget {
   const CashierDashboardScreen({super.key});
@@ -54,20 +55,23 @@ class CashierDashboardScreen extends ConsumerWidget {
     );
   }
 
-  // TEMP PLACEHOLDER SCREENS
   void _navigateToSales(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => _buildPlaceholderScreen(
-          'Sales Management',
-          IconsaxPlusBold.receipt_item,
-          AppColors.sales,
-          'Create and manage sales transactions',
-        ),
-      ),
+      MaterialPageRoute(builder: (context) => const SalesCreateScreen()),
     );
   }
+
+  // Update the Quick Action Card for New Sale:
+  // Expanded(
+  //   child: _buildQuickActionCard(
+  //     title: 'New Sale',
+  //     subtitle: 'Create transaction',
+  //     icon: IconsaxPlusBold.add_circle,
+  //     color: AppColors.success,
+  //     onTap: _navigateToNewSale, // ✅ Use method instead of inline
+  //   ),
+  // )
 
   void _navigateToCustomers(BuildContext context) {
     Navigator.push(
