@@ -9,9 +9,14 @@ import '../../../../core/widgets/custom_text_field.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../data/models/vehicle_model.dart';
 import '../../../../data/models/customer_model.dart';
+import '../../../../data/models/payment_method_model.dart';
+import '../../../../data/models/installment_model.dart';
 import '../../../providers/sales_provider.dart';
 import '../../../providers/customer_provider.dart';
 import '../../../providers/vehicle_provider.dart';
+import '../../../providers/installment_provider.dart';
+import '../../widgets/installment/payment_method_card.dart';
+import '../../widgets/installment/installment_calculator.dart';
 
 class SalesCreateScreen extends ConsumerStatefulWidget {
   final Vehicle? preSelectedVehicle;
@@ -34,7 +39,8 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
   // Selected data
   Vehicle? _selectedVehicle;
   Customer? _selectedCustomer;
-  String _selectedPaymentMethod = 'cash';
+  PaymentMethod? _selectedPaymentMethod;
+  int? _selectedInstallmentCount;
 
   // UI state
   bool _showCustomerSearch = false;
@@ -60,6 +66,7 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(customerProvider.notifier).loadCustomers();
+      ref.read(installmentProvider.notifier).loadPaymentMethods();
       if (_selectedVehicle == null) {
         ref.read(vehicleListProvider.notifier).loadVehicles();
       }
@@ -930,25 +937,46 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
   }
 
   Widget _buildPaymentDetailsSection() {
+    final paymentMethods = ref.watch(paymentMethodsProvider);
+    final installmentOptions = ref.watch(quickInstallmentOptionsProvider);
+    final installmentPreview = ref.watch(installmentPreviewProvider);
+    final installmentState = ref.watch(installmentProvider);
+
     return _buildFormSection(
       title: '💳 Payment Details',
       children: [
-        isTablet
-            ? Row(
-                children: [
-                  Expanded(child: _buildPaymentMethodDropdown()),
-                  SizedBox(width: responsiveSpacing),
-                  Expanded(child: _buildDownPaymentField()),
-                ],
-              )
-            : Column(
-                children: [
-                  _buildPaymentMethodDropdown(),
-                  SizedBox(height: responsiveSpacing),
-                  _buildDownPaymentField(),
-                ],
-              ),
+        // Payment Method Selection
+        PaymentMethodSelector(
+          paymentMethods: paymentMethods,
+          selectedPaymentMethodId: _selectedPaymentMethod?.id,
+          onPaymentMethodSelected: _onPaymentMethodSelected,
+          isTablet: isTablet,
+          title: 'Select Payment Method',
+        ),
+        
         SizedBox(height: responsiveSpacing),
+        
+        // Down Payment Field
+        _buildDownPaymentField(),
+        
+        // Installment Calculator (only for credit/financing)
+        if (_selectedPaymentMethod?.supportsInstallments == true && _selectedVehicle != null) ...[
+          SizedBox(height: responsiveSpacing),
+          InstallmentCalculator(
+            vehiclePrice: _selectedVehicle!.sellingPrice,
+            downPayment: double.tryParse(_downPaymentController.text) ?? 0,
+            installmentOptions: installmentOptions,
+            selectedInstallmentCount: _selectedInstallmentCount,
+            onInstallmentCountChanged: _onInstallmentCountChanged,
+            preview: installmentPreview,
+            isLoading: installmentState.isLoadingPreview,
+            isTablet: isTablet,
+          ),
+        ],
+        
+        SizedBox(height: responsiveSpacing),
+        
+        // Transaction Notes
         CustomTextField(
           controller: _notesController,
           label: 'Transaction Notes',
@@ -963,71 +991,40 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     );
   }
 
-  Widget _buildPaymentMethodDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Payment Method',
-          style: TextStyle(
-            fontSize: isTablet ? 16 : 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        SizedBox(height: 8),
-        Container(
-          height: 48,
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border, width: 1.5),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-          ),
-          child: Row(
-            children: [
-              Icon(
-                IconsaxPlusBold.card,
-                color: AppColors.textTertiary,
-                size: 20,
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedPaymentMethod,
-                    isExpanded: true,
-                    onChanged: (value) =>
-                        setState(() => _selectedPaymentMethod = value!),
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: isTablet ? 16 : 14,
-                    ),
-                    icon: Icon(
-                      IconsaxPlusBold.arrow_down_1,
-                      color: AppColors.textTertiary,
-                      size: 16,
-                    ),
-                    items:
-                        [
-                          {'value': 'cash', 'label': 'Cash Payment'},
-                          {'value': 'transfer', 'label': 'Bank Transfer'},
-                          {'value': 'check', 'label': 'Check Payment'},
-                          {'value': 'credit', 'label': 'Credit/Financing'},
-                        ].map((item) {
-                          return DropdownMenuItem<String>(
-                            value: item['value'],
-                            child: Text(item['label']!),
-                          );
-                        }).toList(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+  // ✅ PAYMENT METHOD AND INSTALLMENT HANDLERS
+  void _onPaymentMethodSelected(PaymentMethod paymentMethod) {
+    setState(() {
+      _selectedPaymentMethod = paymentMethod;
+      _selectedInstallmentCount = null; // Reset installment selection
+    });
+    
+    // Clear installment preview when payment method changes
+    ref.read(installmentProvider.notifier).clearPreview();
+  }
+
+  void _onInstallmentCountChanged(int installmentCount) {
+    setState(() {
+      _selectedInstallmentCount = installmentCount;
+    });
+    
+    // Calculate installment preview
+    _calculateInstallmentPreview();
+  }
+
+  void _calculateInstallmentPreview() {
+    if (_selectedVehicle == null || _selectedPaymentMethod == null || _selectedInstallmentCount == null) {
+      return;
+    }
+    
+    final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
+    final request = PaymentPreviewRequest(
+      principal: _selectedVehicle!.sellingPrice,
+      installmentCount: _selectedInstallmentCount!,
+      downPayment: downPayment,
+      paymentMethodId: _selectedPaymentMethod!.id,
     );
+    
+    ref.read(installmentProvider.notifier).calculatePaymentPreview(request);
   }
 
   Widget _buildDownPaymentField() {
@@ -1042,6 +1039,12 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       validator: _validateDownPayment,
       helperText: 'Minimum 10% of vehicle price',
+      onChanged: (value) {
+        // Recalculate installment preview when down payment changes
+        if (_selectedPaymentMethod?.supportsInstallments == true && _selectedInstallmentCount != null) {
+          _calculateInstallmentPreview();
+        }
+      },
     );
   }
 
@@ -1117,6 +1120,7 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     final canCreateSale =
         _selectedVehicle != null &&
         _selectedCustomer != null &&
+        _selectedPaymentMethod != null &&
         _downPaymentController.text.isNotEmpty;
 
     return Container(
@@ -1360,6 +1364,11 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       return;
     }
 
+    if (_selectedPaymentMethod == null) {
+      _showErrorSnackBar('Please select a payment method');
+      return;
+    }
+
     final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
     final vehiclePrice = _selectedVehicle!.sellingPrice;
 
@@ -1368,7 +1377,8 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     print('Customer ID: ${_selectedCustomer!.id}');
     print('Total Amount: $vehiclePrice');
     print('Down Payment: $downPayment');
-    print('Payment Method: $_selectedPaymentMethod');
+    print('Payment Method: ${_selectedPaymentMethod!.id}');
+    print('Installment Count: $_selectedInstallmentCount');
 
     await ref
         .read(salesProvider.notifier)
@@ -1377,7 +1387,7 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
           customerId: _selectedCustomer!.id,
           totalAmount: vehiclePrice,
           downPayment: downPayment,
-          paymentMethod: _selectedPaymentMethod,
+          paymentMethod: _selectedPaymentMethod!.id,
           notes: _notesController.text,
         );
   }
