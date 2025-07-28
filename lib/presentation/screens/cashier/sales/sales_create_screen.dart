@@ -70,6 +70,18 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       if (_selectedVehicle == null) {
         ref.read(vehicleListProvider.notifier).loadVehicles();
       }
+      
+      // Set default payment method if none selected
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_selectedPaymentMethod == null) {
+          final paymentMethods = ref.read(paymentMethodsProvider);
+          if (paymentMethods.isNotEmpty) {
+            setState(() {
+              _selectedPaymentMethod = paymentMethods.first;
+            });
+          }
+        }
+      });
     });
   }
 
@@ -942,12 +954,17 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
     final installmentPreview = ref.watch(installmentPreviewProvider);
     final installmentState = ref.watch(installmentProvider);
 
+    // Use default payment methods if API ones are not available
+    final effectivePaymentMethods = paymentMethods.isNotEmpty 
+        ? paymentMethods 
+        : PaymentMethod.defaultPaymentMethods;
+
     return _buildFormSection(
       title: '💳 Payment Details',
       children: [
         // Payment Method Selection
         PaymentMethodSelector(
-          paymentMethods: paymentMethods,
+          paymentMethods: effectivePaymentMethods,
           selectedPaymentMethodId: _selectedPaymentMethod?.id,
           onPaymentMethodSelected: _onPaymentMethodSelected,
           isTablet: isTablet,
@@ -1016,15 +1033,21 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       return;
     }
     
-    final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
-    final request = PaymentPreviewRequest(
-      principal: _selectedVehicle!.sellingPrice,
-      installmentCount: _selectedInstallmentCount!,
-      downPayment: downPayment,
-      paymentMethodId: _selectedPaymentMethod!.id,
-    );
-    
-    ref.read(installmentProvider.notifier).calculatePaymentPreview(request);
+    try {
+      final downPayment = double.tryParse(_downPaymentController.text) ?? 0;
+      final request = PaymentPreviewRequest(
+        principal: _selectedVehicle!.sellingPrice,
+        installmentCount: _selectedInstallmentCount!,
+        downPayment: downPayment,
+        paymentMethodId: _selectedPaymentMethod!.id,
+      );
+      
+      ref.read(installmentProvider.notifier).calculatePaymentPreview(request);
+    } catch (e) {
+      print('Error calculating installment preview: $e');
+      // Clear any existing preview on error
+      ref.read(installmentProvider.notifier).clearPreview();
+    }
   }
 
   Widget _buildDownPaymentField() {
@@ -1041,8 +1064,15 @@ class _SalesCreateScreenState extends ConsumerState<SalesCreateScreen> {
       helperText: 'Minimum 10% of vehicle price',
       onChanged: (value) {
         // Recalculate installment preview when down payment changes
-        if (_selectedPaymentMethod?.supportsInstallments == true && _selectedInstallmentCount != null) {
-          _calculateInstallmentPreview();
+        if (_selectedPaymentMethod?.supportsInstallments == true && 
+            _selectedInstallmentCount != null && 
+            value.isNotEmpty) {
+          // Add a small delay to avoid too many API calls
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_downPaymentController.text == value) {
+              _calculateInstallmentPreview();
+            }
+          });
         }
       },
     );

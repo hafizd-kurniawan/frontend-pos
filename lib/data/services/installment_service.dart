@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import '../models/installment_model.dart';
 import '../models/payment_method_model.dart';
 import '../../core/network/dio_client.dart';
@@ -224,8 +225,8 @@ class InstallmentService {
     // Simple interest calculation
     final monthlyInterestRate = annualInterestRate / 12;
     final monthlyPayment = principal * 
-        (monthlyInterestRate * pow(1 + monthlyInterestRate, months)) /
-        (pow(1 + monthlyInterestRate, months) - 1);
+        (monthlyInterestRate * math.pow(1 + monthlyInterestRate, months)) /
+        (math.pow(1 + monthlyInterestRate, months) - 1);
 
     final totalAmount = monthlyPayment * months;
     final totalInterest = totalAmount - principal;
@@ -255,13 +256,4 @@ class InstallmentService {
       schedule: schedule,
     );
   }
-}
-
-// Helper function for power calculation
-double pow(double base, int exponent) {
-  double result = 1.0;
-  for (int i = 0; i < exponent; i++) {
-    result *= base;
-  }
-  return result;
 }
