@@ -6,8 +6,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../data/models/user_model.dart';
 import '../../../../presentation/providers/auth_provider.dart';
+import '../../../../presentation/providers/installment_provider.dart';
 import '../vehicles/vehicle_list_screen.dart';
 import '../sales/sales_create_screen.dart';
+import '../installments/installment_list_screen.dart';
 
 class CashierDashboardScreen extends ConsumerWidget {
   const CashierDashboardScreen({super.key});
@@ -15,6 +17,11 @@ class CashierDashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentUser = ref.watch(currentUserProvider);
+
+    // Load installment stats when dashboard builds
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(installmentProvider.notifier).loadInstallmentStats();
+    });
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -37,11 +44,13 @@ class CashierDashboardScreen extends ConsumerWidget {
                         children: [
                           _buildWelcomeSection(context, currentUser),
                           const SizedBox(height: 40),
-                          _buildQuickStats(context),
+                          _buildQuickStats(context, ref),
                           const SizedBox(height: 40),
                           _buildQuickActions(context),
                           const SizedBox(height: 40),
                           _buildTodayActivity(context),
+                          const SizedBox(height: 40),
+                          _buildInstallmentOverview(context, ref),
                         ],
                       ),
                     ),
@@ -566,7 +575,9 @@ class CashierDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildQuickStats(BuildContext context) {
+  Widget _buildQuickStats(BuildContext context, WidgetRef ref) {
+    final installmentStats = ref.watch(installmentStatsProvider);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -594,35 +605,38 @@ class CashierDashboardScreen extends ConsumerWidget {
             const SizedBox(width: 24),
             Expanded(
               child: _buildStatCard(
+                title: "Pending Installments",
+                value: '${installmentStats['pending_count'] ?? 0}',
+                subtitle: 'Due payments',
+                icon: IconsaxPlusBold.receipt_minus,
+                color: AppColors.warning,
+                amount: 'Rp ${_formatAmount(installmentStats['total_pending_amount'] ?? 0)}',
+                onTap: () => _navigateToInstallments(context),
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildStatCard(
+                title: "Overdue Installments",
+                value: '${installmentStats['overdue_count'] ?? 0}',
+                subtitle: 'Require attention',
+                icon: IconsaxPlusBold.warning_2,
+                color: AppColors.error,
+                amount: 'Rp ${_formatAmount(installmentStats['total_overdue_amount'] ?? 0)}',
+                onTap: () => _navigateToInstallments(context, filter: 'overdue'),
+                hasAlert: (installmentStats['overdue_count'] ?? 0) > 0,
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildStatCard(
                 title: "Vehicle Purchases",
                 value: '2',
                 subtitle: 'Vehicles acquired',
                 icon: IconsaxPlusBold.shopping_cart,
                 color: AppColors.purchase,
-                amount: 'Rp 300M',
-                onTap: () => _showComingSoon(context, 'Purchase Management'),
-              ),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              child: _buildStatCard(
-                title: 'Revenue Today',
-                value: 'Rp 750M',
-                subtitle: 'Net earnings',
-                icon: IconsaxPlusBold.dollar_circle,
-                color: AppColors.success,
-                onTap: () => _showComingSoon(context, 'Revenue Details'),
-              ),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              child: _buildStatCard(
-                title: 'Active Session',
-                value: DateFormat('HH:mm').format(DateTime.now()),
-                subtitle: 'Since login today',
-                icon: IconsaxPlusBold.clock,
-                color: AppColors.info,
-                amount: '8h 30m',
+                amount: 'Rp 450M',
+                onTap: () => _showComingSoon(context, 'Purchase History'),
               ),
             ),
           ],
@@ -639,6 +653,7 @@ class CashierDashboardScreen extends ConsumerWidget {
     required Color color,
     String? amount,
     VoidCallback? onTap,
+    bool hasAlert = false,
   }) {
     return Material(
       color: Colors.transparent,
@@ -650,11 +665,14 @@ class CashierDashboardScreen extends ConsumerWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(
+              color: hasAlert ? color.withOpacity(0.5) : AppColors.border,
+              width: hasAlert ? 2 : 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
+                color: hasAlert ? color.withOpacity(0.1) : Colors.black.withOpacity(0.02),
+                blurRadius: hasAlert ? 12 : 8,
                 offset: const Offset(0, 2),
               ),
             ],
@@ -673,12 +691,27 @@ class CashierDashboardScreen extends ConsumerWidget {
                     ),
                     child: Icon(icon, color: color, size: 24),
                   ),
-                  if (onTap != null)
-                    Icon(
-                      Icons.arrow_forward_ios,
-                      color: AppColors.textTertiary,
-                      size: 16,
-                    ),
+                  Row(
+                    children: [
+                      if (hasAlert) ...[
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      if (onTap != null)
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          color: AppColors.textTertiary,
+                          size: 16,
+                        ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -750,6 +783,16 @@ class CashierDashboardScreen extends ConsumerWidget {
             const SizedBox(width: 24),
             Expanded(
               child: _buildActionCard(
+                title: 'Manage Installments',
+                subtitle: 'Track payment schedules',
+                icon: IconsaxPlusBold.receipt_minus,
+                color: AppColors.primary,
+                onTap: () => _navigateToInstallments(context),
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildActionCard(
                 title: 'Add Customer',
                 subtitle: 'Register new customer',
                 icon: IconsaxPlusBold.user_add,
@@ -770,16 +813,6 @@ class CashierDashboardScreen extends ConsumerWidget {
                     builder: (context) => const VehicleListScreen(),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              child: _buildActionCard(
-                title: 'Purchase Vehicle',
-                subtitle: 'Buy from customer',
-                icon: IconsaxPlusBold.shopping_cart,
-                color: AppColors.purchase,
-                onTap: () => _showComingSoon(context, 'Purchase Vehicle'),
               ),
             ),
           ],
@@ -1115,20 +1148,123 @@ class CashierDashboardScreen extends ConsumerWidget {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
+              // Handle logout logic here
             },
             child: const Text('Logout'),
           ),
         ],
       ),
     );
+  }
+
+  void _navigateToInstallments(BuildContext context, {String? filter}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const InstallmentListScreen(),
+      ),
+    );
+  }
+
+  Widget _buildInstallmentOverview(BuildContext context, WidgetRef ref) {
+    final installmentStats = ref.watch(installmentStatsProvider);
+    final overdueCount = installmentStats['overdue_count'] ?? 0;
+    
+    if (overdueCount == 0) {
+      return const SizedBox.shrink();
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.error, AppColors.error.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.error.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              IconsaxPlusBold.warning_2,
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '⚠️ Overdue Installments Alert',
+                  style: AppTextStyles.titleLarge.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You have $overdueCount overdue installment${overdueCount > 1 ? 's' : ''} requiring immediate attention.',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 24),
+          ElevatedButton.icon(
+            onPressed: () => _navigateToInstallments(context, filter: 'overdue'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.error,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: Icon(IconsaxPlusBold.eye, size: 20),
+            label: Text(
+              'View Overdue',
+              style: AppTextStyles.buttonMedium.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatAmount(dynamic amount) {
+    if (amount == null) return '0';
+    final double value = amount is int ? amount.toDouble() : amount;
+    if (value >= 1000000000) {
+      return '${(value / 1000000000).toStringAsFixed(1)}B';
+    } else if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}M';
+    } else if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}K';
+    }
+    return value.toStringAsFixed(0);
   }
 
   String _formatCurrency(double amount) {
@@ -1147,19 +1283,5 @@ class CashierDashboardScreen extends ConsumerWidget {
     if (hour < 12) return 'Morning';
     if (hour < 17) return 'Afternoon';
     return 'Evening';
-  }
-}
-
-// Import the login screen
-class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Text('Login Screen', style: AppTextStyles.headlineLarge),
-      ),
-    );
   }
 }
